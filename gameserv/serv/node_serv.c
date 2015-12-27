@@ -1,12 +1,14 @@
 #include <stdio.h>
 
+typedef struct _task {
+	uint8_t priv_data[0];
+} task_t;
 
-
-typedef struct _task_handle {
+typedef struct _task_worker {
 	fdhandler_t *hand;
 	int port;
-	void *priv_data;
-} task_handle_t;
+	struct Hashmap tasks_map; 	/*key: task id*/
+} task_worker_t;
 
 /* ns: node server */
 
@@ -51,11 +53,6 @@ static int ns_task_control_handle(struct pack_task_control *pc)
 	return ops->control_handle(pkt);
 }
 
-int ns_task_register()
-{
-
-}
-
 static void create_task_handle()
 {
 
@@ -97,6 +94,17 @@ static void ns_close_fn(node_serv_t *ns)
 {
 
 }
+
+task_t create_node_serv_task()
+{
+
+}
+
+int node_serv_task_register(task_t *task)
+{
+
+}
+
 
 
 int node_serv_init(const char *host)

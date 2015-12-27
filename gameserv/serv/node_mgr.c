@@ -1,5 +1,13 @@
 #include <stdio.h>
 
+typedef struct _task_handle {
+	int taskid;
+	int type;
+	int priority;
+
+	node_info_t *node;
+} task_handle_t;
+
 static struct listnode task_protos_list;
 static pthread_mutex_t task_protos_lock;
 
@@ -81,62 +89,78 @@ static node_info_t *nodemgr_choice_node(node_mgr_t *mgr, int priority)
 }
 
 
-static int create_task_assign_pkt(task_info_t *task,
+static int create_task_assign_pkt(int type, task_baseinfo_t *base,
 	   	struct pack_task_assign **pkt)
 {
 	struct task_operations *ops;
 
-	ops = find_task_protos_by_type(task->type);
+	ops = find_task_protos_by_type(type);
 	if(!ops)
 		return -EINVAL;
 
-	return ops->create_assign_pkt(task, pkt);
+	return ops->create_assign_pkt(base, pkt);
 }
 
-unsigned int nodemgr_task_assign(node_mgr_t *mgr, task_info_t *task)
+
+unsigned int nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
+		task_baseinfo_t *base)
 {
 	int len;
 	node_info_t *node;
 	struct pack_task_assign *pkt;
+	task_handle_t *handle;
 
-	if(!task || !mgr)
+	if(!mgr)
 		return -EINVAL;
 
-	node = nodemgr_choice_node(mgr, task->priority);
-	len = create_task_assign_pkt(task, &pkt);
+	handle = malloc(sizeof(*handle));
+	if(!handle)
+		return -EINVAL;
+
+	node = nodemgr_choice_node(mgr, priority);
+	handle->node = node;
+	handle->taskid = alloc_taskid(mgr);
+	handle->type = type;
+	handle->priority = priority;
+
+	len = create_task_assign_pkt(type, base, &pkt);
 
 	pkt->type = MSG_TASK_ASSIGN;
+	pkt->taskid = handle->taskid;
+	pkt->priority = handle->priority;
 	nodemgr_task_send(node, (const uint8_t)pkt, len);
 
-	return (unsigned int)node;
+	return (unsigned int)handle;
 }
 
 
-static int create_task_reclaim_pkt(task_info_t *task,
+static int create_task_reclaim_pkt(int type, task_baseinfo_t *base,
 	   	struct pack_task_reclaim **pkt)
 {
 	struct task_operations *ops;
 
-	ops = find_task_protos_by_type(task->type);
+	ops = find_task_protos_by_type(type);
 	if(!ops)
 		return -EINVAL;
 
-	return ops->create_reclaim_pkt(task, pkt);
+	return ops->create_reclaim_pkt(base, pkt);
 }
 
 
-int nodemgr_task_reclaim(node_mgr_t *mgr, unsigned int handle, task_info_t *task)
+int nodemgr_task_reclaim(node_mgr_t *mgr, unsigned int handle,
+		task_baseinfo_t *base)
 {
 	int len;
 	node_info_t *node;
 	struct pack_task_reclaim *pkt;
+	task_handle_t *task = (task_handle_t *)handle;
 
-	if(!task || !mgr)
+	if(!mgr)
 		return -EINVAL;
 
-	node = (node_info_t *)handle;
+	node = task->node;
 
-	len = create_task_reclaim_pkt(task, &pkt);
+	len = create_task_reclaim_pkt(base, &pkt);
 
 	pkt->type = MSG_TASK_RECLAIM;
 	nodemgr_task_send(node, (const uint8_t)pkt, len);
@@ -144,24 +168,25 @@ int nodemgr_task_reclaim(node_mgr_t *mgr, unsigned int handle, task_info_t *task
 }
 
 
-static int create_task_control_pkt(task_info_t *task,
+static int create_task_control_pkt(int type, task_baseinfo_t *base,
 	   	struct pack_task_control **pkt)
 {
 	struct task_operations *ops;
 
-	ops = find_task_protos_by_type(task->type);
+	ops = find_task_protos_by_type(type);
 	if(!ops)
 		return -EINVAL;
 
-	return ops->create_control_pkt(task, pkt);
+	return ops->create_control_pkt(base, pkt);
 }
 
 
-int nodemgr_task_control(node_mgr_t *mgr, unsigned int handle, task_info_t *task)
+int nodemgr_task_control(node_mgr_t *mgr, unsigned int handle,
+	   	task_baseinfo_t *base)
 {
 	int len;
 	node_info_t *node;
-	struct pack_task_reclaim *pkt;
+	struct pack_task_control *pkt;
 
 	if(!task || !mgr)
 		return -EINVAL;
@@ -190,5 +215,4 @@ node_mgr_t *node_mgr_init(void)
 
 	return nsm;
 }
-
 

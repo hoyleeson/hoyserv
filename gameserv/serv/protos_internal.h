@@ -24,23 +24,31 @@ enum task_type {
 	TASK_TURN,
 }
 
+#define TASK_PRIORITY_MIN 		(0)
+#define TASK_PRIORITY_MAX 		(8)
+#define TASK_PRIORITY_NORMAL 	TASK_PRIORITY_MIN
+
 struct pack_task_assign {
-	int8_t type;
+	uint8_t type;
+	uint32_t taskid;
+	uint8_t priority;
 	uint8_t data[0];
 };
 
 struct pack_task_reclaim {
-	int8_t type;
+	uint8_t type;
+	uint32_t taskid;
 	uint8_t data[0];
 };
 
 struct pack_task_control {
-	int8_t type;
+	uint8_t type;
+	uint32_t taskid;
 	uint8_t data[0];
 };
 
 typedef struct _client_tuple {
-	struct sockaddr ip;
+	struct sockaddr addr;
 } client_tuple_t;
 
 
@@ -53,15 +61,12 @@ struct pack_turn_assign {
 
 struct pack_turn_reclaim {
 	struct pack_task_reclaim base;
-	uint64_t groupid;
 };
 
 struct pack_turn_change {
 	struct pack_task_config base;
-	int type;
-	uint64_t groupid;
-	int cli_count;
-	client_tuple_t tuple[0];
+	int opt;
+	client_tuple_t tuple;
 };
 
 
