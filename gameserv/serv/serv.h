@@ -1,5 +1,5 @@
-#ifndef _TURN_SERV_H_
-#define _TURN_SERV_H_
+#ifndef _SERV_SERV_H_
+#define _SERV_SERV_H_
 
 
 int center_serv_init();

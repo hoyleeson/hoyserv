@@ -35,6 +35,9 @@ enum center_cli_msg_type {
 	MSG_HANDLE_ERR,
 };
 
+enum {
+	MSG_TASK_REQ,
+};
 
 /* client A <----------> client B */
 enum client_msg_type {
@@ -83,6 +86,15 @@ struct pack_join_group {
 
 struct pack_leave_group {
 	uint64_t userid;
+};
+
+/* send to node server */
+struct pack_task_req {
+	uint32_t taskid;
+	uint64_t userid;
+	uint8_t type;
+	uint32_t datalen;
+	uint8_t data[0];
 };
 
 typedef struct _user {

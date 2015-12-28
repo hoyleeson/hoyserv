@@ -84,41 +84,41 @@ static int cmd_logout_handle(cli_mgr_t *cm, uint64_t uid)
 
 static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
 {
-	group_info_t *rinfo;
+	group_info_t *ginfo;
 	user_info_t *creater;
 
 	creater = hashmapGet(cm->user_map, &pr->userid);
 	if(!creater)
 		return -EINVAL;
 
-	rinfo = malloc(sizeof(*rinfo));
+	ginfo = malloc(sizeof(*ginfo));
 	if(!uinfo)
 		return -EINVAL;
 
-	rinfo->groupid = cli_mgr_alloc_rid(cm);
-	rinfo->flags = pr->flags;
-	list_init(rinfo->userlist);
+	ginfo->groupid = cli_mgr_alloc_rid(cm);
+	ginfo->flags = pr->flags;
+	list_init(ginfo->userlist);
 
-	strncpy(rinfo->name, pr->name, GROUP_NAME_MAX);
+	strncpy(ginfo->name, pr->name, GROUP_NAME_MAX);
 
-	if(rinfo->flags & GROUP_TYPE_NEED_PASSWD)
-		strncpy(rinfo->passwd, pr->passwd, GROUP_PASSWD_MAX);
+	if(ginfo->flags & GROUP_TYPE_NEED_PASSWD)
+		strncpy(ginfo->passwd, pr->passwd, GROUP_PASSWD_MAX);
 
-	list_add_tail(&rinfo->userlist, &creater->node);
-	rinfo->users++;
+	list_add_tail(&ginfo->userlist, &creater->node);
+	ginfo->users++;
 	cm->group_count++;
-	hashmapPut(cm->group_map, &rinfo->groupid, rinfo);
+	hashmapPut(cm->group_map, &ginfo->groupid, ginfo);
 	return 0;
 }
 
 
 static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
 {
-	group_info_t *rinfo;
+	group_info_t *ginfo;
 	user_info_t *creater;
 
-	rinfo = hashmapRemove(cm->group_map, &uid);
-	if(!rinfo)
+	ginfo = hashmapRemove(cm->group_map, &ginfo->groupid);
+	if(!ginfo)
 		return -EINVAL;
 
 	cm->group_count--;
@@ -128,7 +128,7 @@ static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
 	}
 
 	/*XXX notify node server and user */
-	free(rinfo);
+	free(ginfo);
 	return 0;
 }
 
@@ -142,15 +142,15 @@ struct group_list_tmp {
 static bool hash_entry_cb(void* key, void* value, void* context)
 {
 	group_t *group;
-	group_info_t *rinfo = (group_info_t *)value;
+	group_info_t *ginfo = (group_info_t *)value;
 	struct group_list_tmp *rtmp = (struct group_list_tmp *)context;
 
 	group = (group_t *)(data + index);
-	group->groupid = rinfo->groupid;
-	group->flags = rinfo->flags;
-	group->namelen = strlen(rinfo->name);
+	group->groupid = ginfo->groupid;
+	group->flags = ginfo->flags;
+	group->namelen = strlen(ginfo->name);
 
-	strncpy(group->name, rinfo->name, GROUP_NAME_MAX);
+	strncpy(group->name, ginfo->name, GROUP_NAME_MAX);
 	rtmp->index += (sizeof(group_t) + group->namelen);
 	rtmp->count++;
 	
@@ -179,7 +179,7 @@ static int cmd_list_group_handle(cli_mgr_t *cm, struct pack_list_group *pr)
 static int cmd_join_group_handle(cli_mgr_t *cm, struct pack_join_group *pr)
 {
 	user_info_t *uinfo;
-	group_info_t *rinfo;
+	group_info_t *ginfo;
 
 	uinfo = hashmapGet(cm->user_map, &pr->userid);
 	if(!uinfo)
@@ -190,8 +190,8 @@ static int cmd_join_group_handle(cli_mgr_t *cm, struct pack_join_group *pr)
 		return -EINVAL;
 
 	uinfo->group = group;
-	list_add_tail(&rinfo->userlist, &uinfo->node);
-	rinfo->users++;
+	list_add_tail(&ginfo->userlist, &uinfo->node);
+	ginfo->users++;
 
 	return 0;
 }
@@ -200,23 +200,23 @@ static int cmd_join_group_handle(cli_mgr_t *cm, struct pack_join_group *pr)
 static int cmd_leave_group_handle(cli_mgr_t *cm, struct pack_leave_group *pr)
 {
 	user_info_t *uinfo;
-	group_info_t *rinfo;
+	group_info_t *ginfo;
 
 	uinfo = hashmapGet(cm->user_map, &pr->userid);
 	if(!uinfo)
 		return -EINVAL;
 
-	rinfo = uinfo->group;
-	if(rinfo != NULL) 
+	ginfo = uinfo->group;
+	if(ginfo != NULL) 
 		return -EINVAL;
 
-	rinfo->users--;
+	ginfo->users--;
 	list_remove(uinfo->node);
 	
 	leave_group();
 
 	/*XXX notify node server and user */
-	free(rinfo);
+	free(ginfo);
 }
 
 static int cmd_hbeat_handle(cli_mgr_t *cm)
@@ -305,12 +305,12 @@ static void cli_mgr_close(void *opaque)
 #define HASH_USER_CAPACITY 		(256)
 #define HASH_GROUP_CAPACITY 		(256)
 
-static int int8_hash(void *key)
+static int int64_hash(void *key)
 {
 	return hashmapHash(key, sizeof(int64_t));
 }
 
-static bool int8_equals(void* keyA, void* keyB) 
+static bool int64_equals(void* keyA, void* keyB) 
 {
 	int64_t a = *(int64_t *)keyA;
 	int64_t b = *(int64_t *)keyB;
@@ -335,8 +335,8 @@ cli_mgr_t *cli_mgr_init(void)
 
 	clifd = create_cli_mgr_channel();
 	cm->hand = fdhandler_udp_create(clifd, cli_mgr_handle, cli_mgr_close, cm);
-	cm->user_map = hashmapCreate(HASH_USER_CAPACITY, int8_hash, int8_equals);
-	cm->group_map = hashmapCreate(HASH_GROUP_CAPACITY, int8_hash, int8_equals);
+	cm->user_map = hashmapCreate(HASH_USER_CAPACITY, int64_hash, int64_equals);
+	cm->group_map = hashmapCreate(HASH_GROUP_CAPACITY, int64_hash, int64_equals);
 	return cm;
 }
 

@@ -1,5 +1,5 @@
-#ifndef _CONN_CLI_MGR_H_
-#define _CONN_CLI_MGR_H_
+#ifndef _SERV_CLI_MGR_H_
+#define _SERV_CLI_MGR_H_
 
 #include <common/list.h>
 #include <common/hashmap.h>

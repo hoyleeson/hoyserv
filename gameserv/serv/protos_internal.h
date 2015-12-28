@@ -1,5 +1,5 @@
-#ifndef _TURN_PROTOS_INTERNAL_H_
-#define _TURN_PROTOS_INTERNAL_H_
+#ifndef _SERV_PROTOS_INTERNAL_H_
+#define _SERV_PROTOS_INTERNAL_H_
 
 #define CENTER_SERV_NODE_PORT 	(9123)
 
@@ -29,25 +29,26 @@ enum task_type {
 #define TASK_PRIORITY_NORMAL 	TASK_PRIORITY_MIN
 
 struct pack_task_assign {
-	uint8_t type;
 	uint32_t taskid;
+	uint8_t type;
 	uint8_t priority;
 	uint8_t data[0];
 };
 
 struct pack_task_reclaim {
-	uint8_t type;
 	uint32_t taskid;
+	uint8_t type;
 	uint8_t data[0];
 };
 
 struct pack_task_control {
-	uint8_t type;
 	uint32_t taskid;
+	uint8_t type;
 	uint8_t data[0];
 };
 
 typedef struct _client_tuple {
+	uint64_t userid;
 	struct sockaddr addr;
 } client_tuple_t;
 
@@ -63,8 +64,8 @@ struct pack_turn_reclaim {
 	struct pack_task_reclaim base;
 };
 
-struct pack_turn_change {
-	struct pack_task_config base;
+struct pack_turn_control {
+	struct pack_task_control base;
 	int opt;
 	client_tuple_t tuple;
 };

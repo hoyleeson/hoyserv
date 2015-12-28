@@ -1,5 +1,18 @@
 #include <stdio.h>
 
+
+struct pack_cli_msg {
+	struct pack_task_req base;
+
+	uint8_t type;
+	uint8_t frag;
+	uint8_t frag_count;
+	uint8_t seq;
+	uint32_t datalen;
+	uint8_t data[0];
+};
+
+
 struct client_control {
 	fdhandler_t *hand;
 	uint16_t nextseq;
@@ -13,10 +26,15 @@ struct client_task {
 	struct sockaddr_in serv_addr;
 };
 
+enum client_mode {
+	MODE_SERV_TURN,
+	MODE_CLI_P2P,
+};
 
 struct client
 {	uint64_t userid;
 	uint64_t groupid;
+	int mode;
 
 	struct client_control control;
 	struct client_task task;
@@ -25,7 +43,7 @@ struct client
 
 static struct client _client;
 
-static pack_head_t *create_pack(uint8_t type, uint32_t size)
+static pack_head_t *create_pack(uint8_t type, uint32_t len)
 {
 	pack_head_t *pack;
 	pack = malloc(sizeof(*pack) + size);	
@@ -165,6 +183,52 @@ void client_leave_group(void)
 	p = (struct pack_creat_group *)pack->data;
 
 	p->userid = cli->userid;
+
+	client_send_pack(pack);
+}
+
+
+static pack_head_t *create_task_req_pack(int type, uint32_t priv_size)
+{
+	pack_head_t *pack;
+	struct client *cli = _client;
+	struct pack_task_req *p;
+
+	pack = create_pack(MSG_TASK_REQ, priv_size);
+	p = (struct pack_creat_group *)pack->data;
+
+	p->taskid = cli->task.taskid;
+	p->userid = cli->userid;
+	p->type = type;
+	return pack;
+}
+
+void client_send_command(void *data, int len)
+{
+	pack_head_t *pack;
+	struct pack_cli_msg *p;
+
+	pack = create_task_req_pack(TASK_TURN, sizeof(*p)+len);
+	p = (struct pack_creat_group *)pack->data;
+
+	p->type = PACK_COMMAND;
+	p->datalen = len;
+	memcpy(p->data, data, len);
+
+	client_send_pack(pack);
+}
+
+void client_send_state_img(void *data, int len)
+{
+	pack_head_t *pack;
+	struct pack_cli_msg *p;
+
+	pack = create_task_req_pack(TASK_TURN, sizeof(*p)+len);
+	p = (struct pack_creat_group *)pack->data;
+
+	p->type = PACK_STATE_IMG;
+	p->datalen = len;
+	memcpy(p->data, data, len);
 
 	client_send_pack(pack);
 }
