@@ -207,7 +207,7 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 
 	ttask = &task->priv_data;
 
-	head = create_pack(PACK_, pack->datalen);
+	head = create_pack(MSG_TURN_PACK, pack->datalen);
 
 	len = sizeof(*head) + pack->datalen;
 	memcpy(head->data, pack->data, pack->datalen);

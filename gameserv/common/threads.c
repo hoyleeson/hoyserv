@@ -14,9 +14,9 @@
 ** See the License for the specific language governing permissions and 
 ** limitations under the License.
 */
-#include <cutils/threads.h>
+#include <common/threads.h>
 
-#ifdef HAVE_PTHREADS
+#ifdef HAVE_LIBPTHREAD
 void*  thread_store_get( thread_store_t*  store )
 {
     const pthread_key_t  k = store->tls;

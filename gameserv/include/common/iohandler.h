@@ -1,6 +1,10 @@
 #ifndef _EMUSERVD_IOHANDLER_H_
 #define _EMUSERVD_IOHANDLER_H_
 
+#include <sys/socket.h>
+#include <sys/types.h>
+
+
 
 /* A looper_t object is used to monitor activity on one or more
  * file descriptors (e.g sockets).
@@ -200,7 +204,7 @@ fdhandler_t* fdhandler_create(int fd, handle_func hand_fn, close_func close_fn, 
 fdhandler_t* fdhandler_udp_create(int fd, handlefrom_func hand_fn, close_func close_fn, void *data);
 fdhandler_t* fdhandler_accept_create(int fd, accept_func accept_fn, close_func close_fn, void *data);
 
-unsigned int iohandler_init(void);
+unsigned long iohandler_init(void);
 void iohandler_once();
 void iohandler_loop();
 

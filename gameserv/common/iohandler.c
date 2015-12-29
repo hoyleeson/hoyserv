@@ -7,9 +7,11 @@
 #include <string.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 
-#include "iohandler.h"
-#include "utils/utils.h"
+#include <common/iohandler.h>
+#include <common/log.h>
+#include <common/utils.h>
 
 
 struct iohandler {
@@ -115,7 +117,7 @@ void looper_del(looper_t*  l, int  fd)
     loop_hook_t*  hook = looper_find(l, fd);
 
     if (!hook) {
-        D("%s: invalid fd: %d", __func__, fd);
+        loge("%s: invalid fd: %d", __func__, fd);
         return;
     }
     /* don't remove the hook yet */
@@ -133,7 +135,7 @@ void looper_enable(looper_t*  l, int  fd, int  events)
     loop_hook_t*  hook = looper_find(l, fd);
 
     if (!hook) {
-        D("%s: invalid fd: %d", __func__, fd);
+        loge("%s: invalid fd: %d", __func__, fd);
         return;
     }
 
@@ -157,7 +159,7 @@ void looper_disable(looper_t*  l, int  fd, int  events)
     loop_hook_t*  hook = looper_find(l, fd);
 
     if (!hook) {
-        D("%s: invalid fd: %d", __func__, fd);
+        loge("%s: invalid fd: %d", __func__, fd);
         return;
     }
 
@@ -194,12 +196,12 @@ int looper_exec(looper_t* l) {
 	} while (count < 0 && errno == EINTR);
 
 	if (count < 0) {
-		D("%s: error: %s", __func__, strerror(errno));
+		loge("%s: error: %s", __func__, strerror(errno));
 		return -EINVAL;
 	}
 
 	if (count == 0) {
-		D("%s: huh ? epoll returned count=0", __func__);
+		loge("%s: huh ? epoll returned count=0", __func__);
 		return 0;
 	}
 
@@ -340,7 +342,7 @@ void fdhandler_list_init(fdhandler_list_t*  list, looper_t*  looper)
  */
 void fdhandler_close(fdhandler_t*  f)
 {
-	D("%s: closing fd %d", __func__, f->fd);
+	logd("%s: closing fd %d", __func__, f->fd);
 
     /* notify receiver */
     receiver_close(f->receiver);
@@ -374,7 +376,7 @@ void fdhandler_close(fdhandler_t*  f)
  */
 void fdhandler_shutdown(fdhandler_t*  f)
 {
-	D("%s: shoutdown", __func__);
+	logd("%s: shoutdown", __func__);
     /* prevent later fdhandler_close() to
      * call the receiver's close.
      */
@@ -441,11 +443,13 @@ static int fdhandler_read(fdhandler_t*  f)
 
 	switch(f->type) {
 		case HANDLER_TYPE_UDP:
+		{
 			struct sockaddr src_addr;
 		   	socklen_t addrlen;
 			p->len = recvfrom(f->fd, p->data, MAX_PAYLOAD, 0, &src_addr, &addrlen);
 			p->addr = src_addr;
 			break;
+		}
 		case HANDLER_TYPE_TCP_ACCEPT:
 			p->len = 1;
 			p->channel = fd_accept(f->fd);
@@ -520,7 +524,7 @@ static void fdhandler_event(fdhandler_t*  f, int  events)
 
     if (events & (EPOLLHUP|EPOLLERR)) {
         /* disconnection */
-        D("%s: disconnect on fd %d", __func__, f->fd);
+        loge("%s: disconnect on fd %d", __func__, f->fd);
         fdhandler_close(f);
         return;
     }
@@ -534,7 +538,7 @@ static void fdhandler_event(fdhandler_t*  f, int  events)
 static fdhandler_t* fdhandler_new(int fd, fdhandler_list_t* list, 
 		int type, receiver_t* receiver)
 {
-    fdhandler_t*  f = xalloc0(sizeof(*f));
+    fdhandler_t*  f = xzalloc(sizeof(*f));
 
     f->fd          = fd;
     f->list        = list;
@@ -623,7 +627,7 @@ fdhandler_t* fdhandler_accept_create(int fd,
 }
 
 
-unsigned int iohandler_init(void) 
+unsigned long iohandler_init(void) 
 {
 	struct iohandler *ioh = &_iohandler;
 
@@ -631,7 +635,7 @@ unsigned int iohandler_init(void)
 
     fdhandler_list_init(&ioh->fdhandlers, &ioh->looper);
 	
-	return (unsigned int)ioh;
+	return (unsigned long)ioh;
 }
 
 void iohandler_once() 

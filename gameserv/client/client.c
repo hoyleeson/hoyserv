@@ -1,12 +1,25 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <pthread.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
+#include <protos.h>
+#include <common/iohandler.h>
+
+#include "client.h"
+
+#define FRAGMENT_MAX_LEN 	(512)
 
 struct pack_cli_msg {
 	struct pack_task_req base;
 
 	uint8_t type;
-	uint8_t frag;
-	uint8_t frag_count;
+	uint8_t frag:1;
+	uint8_t frag_count:7;
+	uint16_t frag_offset;
 	uint8_t seq;
 	uint32_t datalen;
 	uint8_t data[0];
@@ -31,15 +44,14 @@ enum client_mode {
 	MODE_CLI_P2P,
 };
 
-struct client
-{	uint64_t userid;
+struct client {	
+	uint64_t userid;
 	uint64_t groupid;
 	int mode;
-
+	event_cb callback;
 	struct client_control control;
 	struct client_task task;
 };
-
 
 static struct client _client;
 
@@ -244,6 +256,7 @@ static void client_hbeat(struct group_t *group)
 	client_send_pack(pack);
 }
 
+
 static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 {
 	struct client *cli = user;
@@ -257,8 +270,8 @@ static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 	head = (pack_head_t *)data;
 	payload = head + 1; 
 
-	if(head->magic != TURN_SERV_MAGIC ||
-		   	head->version != TURN_VERSION)
+	if(head->magic != SERV_MAGIC ||
+		   	head->version != SERV_VERSION)
 		return;
 
 	if(head->type == MSG_CENTER_ACK) {
@@ -285,14 +298,34 @@ static void cli_msg_close(void *user)
 {
 }
 
-static void pack_cmd_handle() 
+static void pack_command_handle(struct pack_cli_msg *msg) 
 {
-
+	int ret;
+	struct client *cli = _client;
+	
+	ret = cli->callback(EVENT_COMMAND, (void *)msg->data, (void *)msg->datalen);
+	if(ret) {
+		loge("client handle fail.\n");	
+	}
 }
 
-static void pack_state_img_handle() 
+static void pack_state_img_handle(struct pack_cli_msg *msg) 
 {
+	/*XXX*/
+}
 
+static void cli_pack_handle(struct pack_cli_msg *msg) 
+{
+	switch(msg->type) {
+		case PACK_COMMAND:
+			pack_command_handle(msg);
+			break;
+		case PACK_STATE_IMG:
+			pack_state_img_handle(msg);
+			break;
+		default:
+			break;
+	}
 }
 
 static void cli_task_handle(void* user, uint8_t *data, int len, void *from)
@@ -308,8 +341,8 @@ static void cli_task_handle(void* user, uint8_t *data, int len, void *from)
 	head = (pack_head_t *)data;
 	payload = head + 1; 
 
-	if(head->magic != TURN_SERV_MAGIC ||
-		   	head->version != TURN_VERSION)
+	if(head->magic != SERV_MAGIC ||
+		   	head->version != SERV_VERSION)
 		return;
 
 	if(head->type == MSG_CENTER_ACK) {
@@ -319,11 +352,10 @@ static void cli_task_handle(void* user, uint8_t *data, int len, void *from)
 	cli_mgr_send_ack(cm, head);
 
 	switch(head->type) {
-		case PACK_COMMAND:
-			pack_cmd_handle();
-			break;
-		case PACK_STATE_IMG:
-			pack_state_img_handle();
+		case MSG_TURN_PACK:
+		case MSG_P2P_PACK:
+			struct pack_cli_msg *msg = (struct pack_cli_msg *)payload;
+			cli_pack_handle(msg);
 			break;
 		default:
 			break;
@@ -349,7 +381,7 @@ int client_task_start(const char *host, int port, uint64_t userid, uint64_t grou
 	int taskfd;
     struct hostent *hp;
 	int ret;
-	struct client *cli = _client;
+	struct client *cli = &_client;
 
 	taskfd = socket_inaddr_any_server(port, SOCK_DGRAM);
 
@@ -375,7 +407,7 @@ int client_init(const char *host, int mode)
 	int ctlfd;
     struct hostent *hp;
 	int ret;
-	struct client *cli = _client;
+	struct client *cli = &_client;
 	pthread th;
 
 	iohandler_init();

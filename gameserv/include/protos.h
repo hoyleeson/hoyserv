@@ -37,6 +37,7 @@ enum center_cli_msg_type {
 
 enum {
 	MSG_TASK_REQ,
+	MSG_TURN_PACK,
 };
 
 /* client A <----------> client B */

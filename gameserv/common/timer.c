@@ -5,18 +5,20 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/timerfd.h>
+#include <errno.h>
 
-#include "timer.h"
-#include "utils.h"
+#include <common/timer.h>
+#include <common/utils.h>
+#include <common/iohandler.h>
 
 
-static struct emu_clock _clock;
+static timer_base_t _clock;
 
 #define NSEC2SEC 	(1000000000LL)
 
-static void timer_set_interval(struct emu_timer *timer, int64_t interval)
+static void timer_set_interval(struct timer_item *timer, int64_t interval)
 {
-	struct emu_clock *clock = timer->clock;
+	timer_base_t *clock = timer->clock;
     struct itimerspec itval;
 	int i_sec = interval / NSEC2SEC;
 	int i_nsec = interval % NSEC2SEC;;
@@ -27,42 +29,42 @@ static void timer_set_interval(struct emu_timer *timer, int64_t interval)
     itval.it_value.tv_sec = i_sec;
     itval.it_value.tv_nsec = i_nsec;
 
-	D("timer set interval:sec:%d, nsec:%d", i_sec, i_nsec);
+	logd("timer set interval:sec:%d, nsec:%d", i_sec, i_nsec);
     if (timerfd_settime(clock->clkid, 0, &itval, NULL) == -1)
-		LOG("timer_set_interval: timerfd_settime failed, %d.%d\n", i_sec, i_nsec);
+		loge("timer_set_interval: timerfd_settime failed, %d.%d\n", i_sec, i_nsec);
 }
 
-static void timer_set_expires(struct emu_timer *timer, int64_t expires) {
-	int64_t now = emu_get_clock_ns();
-	struct emu_clock *clock = timer->clock;
+static void timer_set_expires(struct timer_item *timer, int64_t expires) {
+	int64_t now = get_clock_ns();
+	timer_base_t *clock = timer->clock;
 
 	clock->next_expires = expires;
 	timer_set_interval(timer, expires - now);
 }
 
-static int emu_timer_expired(struct emu_timer *timer, int64_t expires) {
+static int timer_expired(struct timer_item *timer, int64_t expires) {
     return timer && (timer->expires <= expires);
 }
 
-void emu_add_timer(struct emu_timer *timer, int64_t expires) {
-	struct emu_timer **pt, *t;
-	struct emu_clock *clock = timer->clock;
-	int64_t now = emu_get_clock_ns();
+void add_timer(struct timer_item *timer, int64_t expires) {
+	struct timer_item **pt, *t;
+	timer_base_t *clock = timer->clock;
+	int64_t now = get_clock_ns();
 
 	if(expires < now) {
-		D("warning: expires invaild:%lld", expires);
+		loge("warning: expires invaild:%lld", expires);
 		return;
 	}
 
-	D("%s: expires:%lld", __func__, expires);
+	logd("%s: expires:%lld", __func__, expires);
     /* add the timer in the sorted list */
     /* NOTE: this code must be signal safe because
-       qemu_timer_expired() can be called from a signal. */
+       qtimer_expired() can be called from a signal. */
 
     pt = &clock->timers;
     for(;;) {
         t = *pt;
-        if (!emu_timer_expired(t, expires)) {
+        if (!timer_expired(t, expires)) {
             break;
         }
         pt = &t->next;
@@ -76,11 +78,11 @@ void emu_add_timer(struct emu_timer *timer, int64_t expires) {
 	}
 }
 
-void emu_del_timer(struct emu_timer *timer) {
-	struct emu_clock *clock = timer->clock;
-	struct emu_timer **pt, *t;
+void del_timer(struct timer_item *timer) {
+	timer_base_t *clock = timer->clock;
+	struct timer_item **pt, *t;
 
-	D("del timer");
+	logd("del timer");
    	pt = &clock->timers;
 
 	for(;;) {
@@ -98,20 +100,20 @@ void emu_del_timer(struct emu_timer *timer) {
 		timer_set_expires(timer, (*pt)->expires);
 }
 
-void emu_mod_timer(struct emu_timer *timer, int64_t expires) {
-	emu_del_timer(timer);
-	emu_add_timer(timer, expires);
+void mod_timer(struct timer_item *timer, int64_t expires) {
+	del_timer(timer);
+	add_timer(timer, expires);
 }
 
-void emu_free_timer(struct emu_timer *timer) {
+void free_timer(struct timer_item *timer) {
 	free(timer);
 }
 
-struct emu_timer *emu_new_timer(void (*fn)(unsigned long), unsigned long data) 
+struct timer_item *new_timer(void (*fn)(unsigned long), unsigned long data) 
 {
-	struct emu_timer *timer;
+	struct timer_item *timer;
 
-	timer = (struct emu_timer *)malloc(sizeof(*timer));
+	timer = (struct timer_item *)malloc(sizeof(*timer));
 	if(!timer)
 		return NULL;
 
@@ -124,7 +126,7 @@ struct emu_timer *emu_new_timer(void (*fn)(unsigned long), unsigned long data)
 	return timer;
 }
 
-int64_t emu_get_clock_ns(void) {
+int64_t get_clock_ns(void) {
 	//struct timeval tv;
 	//gettimeofday(&tv, NULL);
 	//return tv.tv_sec * 1000000000LL + (tv.tv_usec * 1000);
@@ -136,20 +138,20 @@ int64_t emu_get_clock_ns(void) {
 	return curr.tv_sec * NSEC2SEC + curr.tv_nsec;
 }
 
-void emu_run_timers() {
-	struct emu_clock *clock = &_clock;
-	struct emu_timer **pt, *t;
+void run_timers() {
+	timer_base_t *clock = &_clock;
+	struct timer_item **pt, *t;
     int64_t curr_time;
 
 	if(!clock->enable)
 		return;
 
-	D("timer running, fd:%d", clock->clkid);
-    curr_time = emu_get_clock_ns();
+	logd("timer running, fd:%d", clock->clkid);
+    curr_time = get_clock_ns();
 	pt = &clock->timers;
 	for(;;) {
 		t = *pt;
-		if(!emu_timer_expired(t, curr_time)) {
+		if(!timer_expired(t, curr_time)) {
 			timer_set_expires(t, t->expires);
 			break;
 		}
@@ -160,24 +162,23 @@ void emu_run_timers() {
 	}
 }
 
-static void timerfd_receive(struct emu_clock* c, uint8_t *data, int len)
+static void timerfd_receive(timer_base_t* c, uint8_t *data, int len)
 {
-    T("%s: %p (%d)", __FUNCTION__, c, len);
-	emu_run_timers();
+    logd("%s: %p (%d)", __FUNCTION__, c, len);
+	run_timers();
 }
 
-static void timerfd_close(struct emu_clock* c)
+static void timerfd_close(timer_base_t* c)
 {
-    T("%s: client %p (%d)", __FUNCTION__, c, c->fdhandler->fd);
+    logd("%s: client %p (%d)", __FUNCTION__, c, c->fdhandler->fd);
 
     /* no need to shutdown the FDHandler */
     c->fdhandler = NULL;
 }
 
 
-
-void emu_timer_init(void) {
-	struct emu_clock *clock = &_clock;
+void timer_init(void) {
+	timer_base_t *clock = &_clock;
 
 	clock->timers = NULL;
 	clock->enable = 1;
@@ -187,6 +188,6 @@ void emu_timer_init(void) {
 	clock->fdhandler = fdhandler_create(clock->clkid, (handle_func)timerfd_receive, 
 			(close_func)timerfd_close, clock);
 
-	D("timer init, fd:%d, %p", clock->clkid, clock->fdhandler);
+	logd("timer init, fd:%d, %p", clock->clkid, clock->fdhandler);
 }
 

@@ -17,6 +17,8 @@
 #ifndef _LIBS_CUTILS_THREADS_H
 #define _LIBS_CUTILS_THREADS_H
 
+#include <config.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -29,7 +31,7 @@ extern "C" {
 /***********************************************************************/
 /***********************************************************************/
 
-#ifdef HAVE_PTHREADS
+#ifdef HAVE_LIBPTHREAD
 
 #include  <pthread.h>
 
@@ -76,7 +78,7 @@ extern void   thread_store_set(thread_store_t*          store,
 /***********************************************************************/
 /***********************************************************************/
 
-#ifdef HAVE_PTHREADS
+#ifdef HAVE_LIBPTHREAD
 
 typedef pthread_mutex_t   mutex_t;
 

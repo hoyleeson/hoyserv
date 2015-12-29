@@ -22,6 +22,8 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include <config.h>
+
 #ifdef HAVE_WINSOCK
 #include <winsock2.h>
 typedef int  socklen_t;
