@@ -1,3 +1,7 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
 #include <stddef.h>
 #include <common/log.h>
 
@@ -37,14 +41,26 @@ static inline int cli_mgr_alloc_uid(cli_mgr_t *cm)
 	return cm->uid_pool++;
 }
 
-static inline int cli_mgr_alloc_rid(cli_mgr_t *cm)
+static inline int cli_mgr_alloc_gid(cli_mgr_t *cm)
 {
-	return cm->rid_pool++;
+	return cm->gid_pool++;
 }
 
 static int cli_ack_handle(cli_mgr_t *cm, uint16_t seqnum)
 {
 
+}
+
+static void login_result_response(cli_mgr_t *cm, user_info_t *uinfo, struct sockaddr *to)
+{
+	pack_head_t *pack;
+	uint32_t *userid;
+
+	pack = create_pack(MSG_LOGIN_RESULT, sizeof(uint32_t));
+	userid = (uint32_t *)pack->data;
+	*userid = uinfo->userid;
+
+	cli_mgr_send_pack(cm, pack, from);
 }
 
 static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
@@ -63,10 +79,12 @@ static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
 
 	cm->user_count++;
 	hashmapPut(cm->user_map, &uinfo->userid, uinfo);
+
+	login_result_response(cm, uinfo, from);
 	return 0;
 }
 
-static int cmd_logout_handle(cli_mgr_t *cm, uint64_t uid)
+static int cmd_logout_handle(cli_mgr_t *cm, uint32_t uid)
 {
 	user_info_t *uinfo;
 	uinfo = hashmapRemove(cm->user_map, &uid);
@@ -76,10 +94,24 @@ static int cmd_logout_handle(cli_mgr_t *cm, uint64_t uid)
 	cm->user_count--;
 
 	if(uinfo->group != NULL) {
-		exit_from_group(); /*XXX*/
+		exit_from_group(); /* XXX */
 	}
 	free(uinfo);
 	return 0;
+}
+
+
+static void create_group_result_response(cli_mgr_t *cm, group_info_t *ginfo, struct sockaddr *to)
+{
+	pack_head_t *pack;
+	struct pack_creat_group_result *result;
+
+	pack = create_pack(MSG_LIST_GROUP_RESULT, sizeof(*result));
+
+	result = (uint32_t *)pack->data;
+	result->taskid = ginfo->taskid;
+	result->addr = get_turn_serv_addr(ginfo->taskid);
+	cli_mgr_send_pack(cm, pack, from);
 }
 
 static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
@@ -95,7 +127,7 @@ static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
 	if(!uinfo)
 		return -EINVAL;
 
-	ginfo->groupid = cli_mgr_alloc_rid(cm);
+	ginfo->groupid = cli_mgr_alloc_gid(cm);
 	ginfo->flags = pr->flags;
 	list_init(ginfo->userlist);
 
@@ -106,9 +138,20 @@ static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
 
 	list_add_tail(&ginfo->userlist, &creater->node);
 	ginfo->users++;
-	cm->group_count++;
+
+	ginfo->taskid = turn_task_assign(cm->node_mgr, ginfo);
+	if(ginfo->taskid == 0)
+		goto fail;
+
 	hashmapPut(cm->group_map, &ginfo->groupid, ginfo);
+	cm->group_count++;
+
+	create_group_result_response(cm, ginfo, create->addr);
 	return 0;
+
+fail:
+	free(ginfo);
+	return -EINVAL;
 }
 
 
@@ -258,11 +301,11 @@ static void cli_mgr_handle(void *opaque, uint8_t *data, int len, void *from)
 
 	switch(head->type) {
 		case MSG_CLI_LOGIN:
-			//uint64_t id = period; /*XXX*/
+			//uint32_t id = period; /*XXX*/
 			ret = cmd_login_handle(cm, addr);
 			break;
 		case MSG_CLI_LOGOUT:
-			uint64_t uid = *(uint64_t *)period;
+			uint32_t uid = *(uint32_t *)period;
 			ret = cmd_logout_handle(cm, uid);
 			break;
 		case MSG_CLI_CREATE_GROUP:
@@ -302,20 +345,17 @@ static void cli_mgr_close(void *opaque)
 
 #define ID_FRIST_NUM 	(1)
 
-#define HASH_USER_CAPACITY 		(256)
+#define HASH_USER_CAPACITY 			(1024)
 #define HASH_GROUP_CAPACITY 		(256)
 
-static int int64_hash(void *key)
+static int int_hash(void *key)
 {
-	return hashmapHash(key, sizeof(int64_t));
+	return (int) key;
 }
 
-static bool int64_equals(void* keyA, void* keyB) 
+static bool int_equals(void* keyA, void* keyB) 
 {
-	int64_t a = *(int64_t *)keyA;
-	int64_t b = *(int64_t *)keyB;
-
-	return (a == b);
+	return (keyA == keyB);
 }
 
 cli_mgr_t *cli_mgr_init(void) 
@@ -328,15 +368,15 @@ cli_mgr_t *cli_mgr_init(void)
 		return NULL;
 
 	cm->uid_pool = ID_FRIST_NUM;
-	cm->rid_pool = ID_FRIST_NUM;
+	cm->gid_pool = ID_FRIST_NUM;
 	cm->user_count = 0;
 	cm->group_count = 0;
 	cm->nextseq = 0;
 
 	clifd = create_cli_mgr_channel();
 	cm->hand = fdhandler_udp_create(clifd, cli_mgr_handle, cli_mgr_close, cm);
-	cm->user_map = hashmapCreate(HASH_USER_CAPACITY, int64_hash, int64_equals);
-	cm->group_map = hashmapCreate(HASH_GROUP_CAPACITY, int64_hash, int64_equals);
+	cm->user_map = hashmapCreate(HASH_USER_CAPACITY, int_hash, int_equals);
+	cm->group_map = hashmapCreate(HASH_GROUP_CAPACITY, int_hash, int_equals);
 	return cm;
 }
 

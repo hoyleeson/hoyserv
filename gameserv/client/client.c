@@ -8,6 +8,7 @@
 
 #include <protos.h>
 #include <common/iohandler.h>
+#include <common/wait.h>
 
 #include "client.h"
 
@@ -45,30 +46,17 @@ enum client_mode {
 };
 
 struct client {	
-	uint64_t userid;
-	uint64_t groupid;
+	uint32_t userid;
+	uint32_t groupid;
 	int mode;
 	event_cb callback;
+	Hashmap *waits_map;
+
 	struct client_control control;
 	struct client_task task;
 };
 
 static struct client _client;
-
-static pack_head_t *create_pack(uint8_t type, uint32_t len)
-{
-	pack_head_t *pack;
-	pack = malloc(sizeof(*pack) + size);	
-	if(!pack)
-		return NULL;
-
-	pack->magic = SERV_MAGIC;
-	pack->version = SERV_VERSION;
-
-	pack->type = type;
-	pack->datalen = len;
-	return pack;
-}
 
 
 static void client_send_pack(pack_head_t *pkt) 
@@ -82,9 +70,33 @@ static void client_send_pack(pack_head_t *pkt)
 		   	&cli->control.serv_addr);
 }
 
+struct expect_res {
+	int type;
+	void *response;
+	wait_obj_t wait;
+};
+
+#define WAIT_PACKET_TIMEOUT_MS 		(10 * 1000)
+
+static int cli_wait_for_reponse(struct client *cli, int type, void *response)
+{
+	int ret;
+	struct expect_res expect;
+
+	expect.type = type;
+	wait_obj_init(&expect.wait);
+
+	hashmapPut(cli->waits_map, type, &expect);
+	ret = wait_for_obj_timeout(&expect.wait, WAIT_PACKET_TIMEOUT_MS);
+	
+	hashmapRemove(cli->waits_map, type);
+	return ret;
+}
 
 int client_login(void)
 {
+	int ret;
+	int userid;
 	pack_head_t *pack;
 	struct client *cli = _client;
 
@@ -92,7 +104,9 @@ int client_login(void)
 
 	client_send_pack(pack);
 
-	wait();
+	ret = cli_wait_for_reponse(cli, MSG_LOGIN_RESULT, &userid);
+	if(ret)
+		return -EINVAL;
 
 	cli->userid = userid;
 
@@ -104,8 +118,8 @@ void client_logout(void)
 	pack_head_t *pack;
 	struct client *cli = _client;
 
-	pack = create_pack(MSG_CLI_LOGOUT, sizeof(uint64_t));
-	*(uint64_t *)pack->data = cli->userid;
+	pack = create_pack(MSG_CLI_LOGOUT, sizeof(uint32_t));
+	*(uint32_t *)pack->data = cli->userid;
 
 	client_send_pack(pack);
 }
@@ -133,6 +147,8 @@ int client_create_group(int open, const char *name, const char *passwd)
 	}
 
 	client_send_pack(pack);
+
+	ret = cli_wait_for_reponse(cli, MSG_LOGIN_RESULT);
 
 	cli->groupid = groupid;
 	return 0;
@@ -282,8 +298,25 @@ static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 
 	switch(head->type) {
 		case MSG_LOGIN_RESULT:
+		{
+			struct expect_res *expect;
+			expect = hashmapGet(cli->waits_map, head->type);
+			if(!expect)
+				return;
+			/* userid */
+			*(uint32_t *)expect->response = *(uint32_t *)payload;
 			break;
+		}
 		case MSG_LIST_GROUP_RESULT:
+		{
+			struct expect_res *expect;
+			expect = hashmapGet(cli->waits_map, head->type);
+			if(!expect)
+				return;
+			/* userid */
+			*(uint32_t *)expect->response = *(uint32_t *)payload;
+			break;
+		}
 			break;
 		case MSG_HANDLE_ERR:
 			break;
@@ -376,7 +409,7 @@ static void *client_thread_handle(void *args)
 }
 
 
-int client_task_start(const char *host, int port, uint64_t userid, uint64_t groupid)
+int client_task_start(const char *host, int port, uint32_t userid, uint32_t groupid)
 {
 	int taskfd;
     struct hostent *hp;
@@ -402,7 +435,19 @@ int client_task_start(const char *host, int port, uint64_t userid, uint64_t grou
 	return 0;
 }
 
-int client_init(const char *host, int mode) 
+#define HASH_WAIT_OBJ_CAPACITY 	(256)
+
+static int int_hash(void *key)
+{
+	return (int) key;
+}
+
+static bool int_equals(void* keyA, void* keyB) 
+{
+	return (keyA == keyB);
+}
+
+int client_init(const char *host, int mode, event_cb callback) 
 {
 	int ctlfd;
     struct hostent *hp;
@@ -411,6 +456,9 @@ int client_init(const char *host, int mode)
 	pthread th;
 
 	iohandler_init();
+
+	cli->waits_map = hashmapCreate(HASH_WAIT_OBJ_CAPACITY, int_hash, int_equals);
+	cli->callback = callback;
 
 	ret = pthread_create(&th, NULL, client_thread_handle, cli);
 	if(ret)

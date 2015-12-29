@@ -9,7 +9,7 @@
 
 typedef struct _task_worker {
 	fdhandler_t *hand;
-	int port;
+	struct sockaddr addr;
 
 	int task_count;
 	struct Hashmap tasks_map; 	/*key: task id*/
@@ -24,6 +24,7 @@ struct task {
 	int priority;
 	task_worker_t *worker;
 	uint8_t priv_data[0];
+	struct task_operations *ops;
 };
 
 /* ns: node server */
@@ -208,7 +209,7 @@ static task_worker_t *create_task_worker(node_serv_t *ns)
 	if(!tworker)
 		goto out;
 
-	tworker->port = ntohs(addr.sin_port);
+	tworker->addr = (struct sockaddr)addr;
 	tworker->task_count = 0;
 
 	tworker->hand = fdhandler_udp_create(sock, task_worker_handle,
@@ -226,7 +227,7 @@ static void free_task_worker(task_worker_t *worker)
 }
 
 
-static task_t *node_serv_task_assign(struct pack_task_assign *pa)
+static task_t *node_serv_task_assign(struct pack_task_base *pt)
 {
 	struct task_operations *ops;
 
@@ -236,33 +237,39 @@ static task_t *node_serv_task_assign(struct pack_task_assign *pa)
 
 	task = ops->assign_handle(pkt);
 
-	task->taskid = taskid;
-	task->type = type;
-	task->priority = priority;
+	task->taskid = pt->taskid;
+	task->type = pt->type;
+//	task->priority = priority;
+
+	task->ops = ops;
 
 	return task;
 }
 
-static int node_serv_task_reclaim(task_t *task, struct pack_task_reclaim *pr)
+static inline int node_serv_task_reclaim(task_t *task, struct pack_task_base *pt)
 {
-	struct task_operations *ops;
+	struct task_operations *ops = task->ops;
 
-	ops = find_task_protos_by_type(task->type);
-	if(!ops)
-		return -EINVAL;
-
-	return ops->reclaim_handle(task, pkt);
+	return ops->reclaim_handle(task, pt);
 }
 
-static int node_serv_task_control(task_t *task, struct pack_task_control *pc)
+static inline int node_serv_task_control(task_t *task, struct pack_task_base *pt)
 {
-	struct task_operations *ops;
+	struct task_operations *ops = task->ops;
 
-	ops = find_task_protos_by_type(task->type);
-	if(!ops)
-		return -EINVAL;
+	return ops->control_handle(task, pt);
+}
 
-	return ops->control_handle(task, pkt);
+static inline int task_assign_response(node_serv_t *ns, task_t *task)
+{
+	struct pack_task_base *pt;
+	struct task_operations *ops = task->ops;
+	
+	pt = ops->create_assign_response_pkt(task);
+	pt->taskid = task->taskid;
+	pt->type = task->type;
+
+	return pt;
 }
 
 static void node_serv_handle(void *opaque, uint8_t *data, int len)
@@ -270,6 +277,7 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 	int ret;
 	node_serv_t *ns = (node_serv_t *)opaque;
 	pack_head_t *head;
+	struct pack_task_base *pt;
 	task_t *task;
 	void *payload;
 
@@ -278,6 +286,7 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 
 	head = (pack_head_t *)data;
 	payload = head + 1; 
+	pt = (struct pack_task_assign *)payload;
 
 	if(head->magic != TURN_SERV_MAGIC ||
 		   	head->version != TURN_VERSION)
@@ -285,27 +294,27 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 
 	switch(head->type) {
 		case MSG_TASK_ASSIGN:
-			struct pack_task_assign *ta = (struct pack_task_assign *)payload;
-
-			task = node_serv_task_assign(ta);
+			task = node_serv_task_assign(pt);
 			node_serv_task_register(ns, task);
+
+			task_assign_response(ns, task);
 			break;
 		case MSG_TASK_RECLAIM:
-			struct pack_task_reclaim *tr = (struct pack_task_reclaim *)payload;
+			task = find_node_serv_task(pt->taskid);
 
-			task = find_node_serv_task(tr->taskid);
 			node_serv_task_unregister(ns, task);
-			node_serv_task_reclaim(task, tr);
+			node_serv_task_reclaim(task, pt);
 			break;
 		case MSG_TASK_CONTROL:
-			struct pack_task_control *tc = (struct pack_task_control *)payload;
+			task = find_node_serv_task(pt->taskid);
 
-			task = find_node_serv_task(tr->taskid);
-			node_serv_task_control(task, tc);
+			node_serv_task_control(task, pt);
+			break;
+		default:
 			break;
 	}
-
 }
+
 
 static void node_serv_close(node_serv_t *ns)
 {

@@ -28,6 +28,7 @@ enum cli_center_msg_type {
 	MSG_CLI_LEAVE_GROUP,
 };
 
+/* center server ----> client */
 enum center_cli_msg_type {
 	MSG_CENTER_ACK,
 	MSG_LOGIN_RESULT,
@@ -64,35 +65,42 @@ typedef struct _pack_header {
 #define GROUP_TYPE_OPENED 		(1 << 1)
 
 struct pack_creat_group {
-	uint64_t userid;
+	uint32_t userid;
 	uint16_t flags;
 	uint8_t name[GROUP_NAME_MAX];
 	uint8_t passwd[GROUP_PASSWD_MAX];
 };
 
 struct pack_del_group {
-	uint64_t userid;
+	uint32_t userid;
 };
 
 struct pack_list_group {
-	uint64_t userid;
+	uint32_t userid;
 };
 
 struct pack_join_group {
-	uint64_t userid;
-	uint64_t groupid;
+	uint32_t userid;
+	uint32_t groupid;
 
 	uint8_t passwd[GROUP_PASSWD_MAX];
 };
 
 struct pack_leave_group {
-	uint64_t userid;
+	uint32_t userid;
 };
+
+
+struct pack_creat_group_result {
+	uint32_t taskid;
+	struct sockaddr addr;
+};
+
 
 /* send to node server */
 struct pack_task_req {
 	uint32_t taskid;
-	uint64_t userid;
+	uint32_t userid;
 	uint8_t type;
 	uint32_t datalen;
 	uint8_t data[0];
@@ -104,13 +112,33 @@ typedef struct _user {
 
 
 typedef struct _group {
-	uint64_t groupid;
+	uint32_t groupid;
 	uint16_t flags;
 	uint32_t namelen;
 	char name[0];
 } group_t;
 
 
+
+static inline pack_head_t *create_pack(uint8_t type, uint32_t len)
+{
+	pack_head_t *pack;
+	pack = malloc(sizeof(*pack) + size);	
+	if(!pack)
+		return NULL;
+
+	pack->magic = SERV_MAGIC;
+	pack->version = SERV_VERSION;
+
+	pack->type = type;
+	pack->datalen = len;
+	return pack;
+}
+
+static inline void free_pack(pack_head_t *pack)
+{
+	free(pack);
+}
 
 
 #endif

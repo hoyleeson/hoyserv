@@ -22,7 +22,7 @@ enum turn_control_type {
 };
 
 
-unsigned int turn_task_assign(node_mgr_t *mgr, group_info_t *group)
+unsigned long turn_task_assign(node_mgr_t *mgr, group_info_t *group)
 {
 	turn_assign_data data;
 
@@ -37,18 +37,7 @@ int turn_task_reclaim(node_mgr_t *mgr, unsigned int handle)
 	return nodemgr_task_reclaim(mgr, NULL);
 }
 
-
-int turn_task_user_join(node_mgr_t *mgr, unsigned int handle, user_info_t *user)
-{
-	return nodemgr_task_control(mgr, handle, TURN_TYPE_USER_JOIN, user);
-}
-
-int turn_task_user_leave(node_mgr_t *mgr, unsigned int handle, user_info_t *user)
-{
-	return nodemgr_task_control(mgr, handle, TURN_TYPE_USER_LEAVE, user);
-}
-
-static inline int turn_task_control(node_mgr_t *mgr, unsigned int handle, int opt, user_info_t *user)
+int turn_task_control(node_mgr_t *mgr, unsigned int handle, int opt, user_info_t *user)
 {
 	turn_control_t data;
 
@@ -57,14 +46,13 @@ static inline int turn_task_control(node_mgr_t *mgr, unsigned int handle, int op
 	return nodemgr_task_control(mgr, &data.base);
 }
 
-
-int turn_task_control(node_mgr_t *mgr, unsigned int handle, int opt, )
+int get_turn_serv_addr() 
 {
-	return nodemgr_task_control(mgr, NULL);
+
 }
 
-
-static int create_turn_task_assign(task_baseinfo_t *base, struct pack_task_assign **pkt)
+static int create_turn_task_assign(task_baseinfo_t *base, 
+		struct pack_task_base **pkt)
 {
 	int i = 0;
 	int len;
@@ -77,7 +65,7 @@ static int create_turn_task_assign(task_baseinfo_t *base, struct pack_task_assig
 		return;
 
 	len = sizeof(*ta) + sizeof(client_tuple_t)*turn->cli_count;
-	*pkt = (struct pack_task_assign *)malloc(len);
+	*pkt = (struct pack_task_base *)malloc(len);
 	ta = *pkt;
 
 	ta->groupid = group->groupid;
@@ -96,20 +84,20 @@ static int create_turn_task_assign(task_baseinfo_t *base, struct pack_task_assig
 }
 
 
-static void create_turn_task_reclaim(task_baseinfo_t *base,
-	   	struct pack_task_reclaim **pkt)
+static void create_turn_task_reclaim(task_baseinfo_t *base, 
+		struct pack_task_base **pkt)
 {
 	int len;
 
-	len = sizeof(struct pack_task_reclaim);
-	*pkt = (struct pack_task_reclaim *)malloc(len);
+	len = sizeof(struct pack_turn_reclaim);
+	*pkt = (struct pack_task_base *)malloc(len);
 
 	return len;	
 }
 
 
 static void create_turn_task_control(task_baseinfo_t *base,
-	   	struct pack_task_control **pkt)
+	   	struct pack_task_base **pkt)
 {
 	int i = 0;
 	int len;
@@ -120,7 +108,7 @@ static void create_turn_task_control(task_baseinfo_t *base,
 	user = data->user;
 
 	len = sizeof(*tc);
-	*pkt = (struct pack_task_control *)malloc(len);
+	*pkt = (struct pack_task_base *)malloc(len);
 	tc = *pkt;
 
 	tc->opt = data->opt;
@@ -131,12 +119,12 @@ static void create_turn_task_control(task_baseinfo_t *base,
 
 
 struct turn_task {
-	uint64_t groupid;
+	uint32_t groupid;
 	int cli_count;
 	client_tuple_t tuple[GROUP_MAX_USER];
 };
 
-static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
+static task_t *turn_task_assign_handle(struct pack_task_base *pkt)
 {
 	int i;
 	struct pack_turn_assign *ta;
@@ -158,7 +146,7 @@ static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
 }
 
 
-static int turn_task_reclaim_handle(task_t *task, struct pack_task_reclaim *pkt)
+static int turn_task_reclaim_handle(task_t *task, struct pack_task_base *pkt)
 {
 /*	struct pack_turn_reclaim *tr;
 
@@ -168,7 +156,7 @@ static int turn_task_reclaim_handle(task_t *task, struct pack_task_reclaim *pkt)
 	return 0;
 }
 
-static int turn_task_control_handle(task_t *task, struct pack_task_control *pkt)
+static int turn_task_control_handle(task_t *task, struct pack_task_base *pkt)
 {
 	struct pack_turn_control *tc;
 	struct turn_task *ttask;
@@ -196,6 +184,11 @@ static int turn_task_control_handle(task_t *task, struct pack_task_control *pkt)
 	}
 
 	return 0;
+}
+
+int create_turn_task_assign_response(task_t *task, struct pack_task_base **pkt)
+{
+
 }
 
 
@@ -234,6 +227,8 @@ struct task_operations turn_ops = {
 	.assign_handle = turn_task_assign_handle,
 	.reclaim_handle = turn_task_reclaim_handle,
 	.control_handle = turn_task_control_handle,
+
+	.create_assign_response_pkt = create_turn_task_assign_response,
 
 	.task_handle = turn_task_handle,
 };

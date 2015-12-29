@@ -1,3 +1,6 @@
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
 #include <stdio.h>
 
 typedef struct _task_handle {
@@ -90,7 +93,7 @@ static node_info_t *nodemgr_choice_node(node_mgr_t *mgr, int priority)
 
 
 static int create_task_assign_pkt(int type, task_baseinfo_t *base,
-	   	struct pack_task_assign **pkt)
+	   	struct pack_task_base **pkt)
 {
 	struct task_operations *ops;
 
@@ -102,12 +105,12 @@ static int create_task_assign_pkt(int type, task_baseinfo_t *base,
 }
 
 
-unsigned int nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
+unsigned long nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 		task_baseinfo_t *base)
 {
 	int len;
 	node_info_t *node;
-	struct pack_task_assign *pkt;
+	struct pack_task_base *pkt;
 	task_handle_t *handle;
 
 	if(!mgr)
@@ -127,15 +130,16 @@ unsigned int nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 
 	pkt->type = MSG_TASK_ASSIGN;
 	pkt->taskid = handle->taskid;
-	pkt->priority = handle->priority;
+//	pkt->priority = handle->priority;
 	nodemgr_task_send(node, (const uint8_t)pkt, len);
 
-	return (unsigned int)handle;
+	nodemgr_wait_for_response();
+	return (unsigned long)handle;
 }
 
 
 static int create_task_reclaim_pkt(int type, task_baseinfo_t *base,
-	   	struct pack_task_reclaim **pkt)
+	   	struct pack_task_base **pkt)
 {
 	struct task_operations *ops;
 
@@ -152,7 +156,7 @@ int nodemgr_task_reclaim(node_mgr_t *mgr, unsigned int handle,
 {
 	int len;
 	node_info_t *node;
-	struct pack_task_reclaim *pkt;
+	struct pack_task_base *pkt;
 	task_handle_t *task = (task_handle_t *)handle;
 
 	if(!mgr)
@@ -169,7 +173,7 @@ int nodemgr_task_reclaim(node_mgr_t *mgr, unsigned int handle,
 
 
 static int create_task_control_pkt(int type, task_baseinfo_t *base,
-	   	struct pack_task_control **pkt)
+	   	struct pack_task_base **pkt)
 {
 	struct task_operations *ops;
 
@@ -186,7 +190,7 @@ int nodemgr_task_control(node_mgr_t *mgr, unsigned int handle,
 {
 	int len;
 	node_info_t *node;
-	struct pack_task_control *pkt;
+	struct pack_task_base *pkt;
 
 	if(!task || !mgr)
 		return -EINVAL;
