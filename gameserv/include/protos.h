@@ -11,8 +11,9 @@
 #define CLI_CONTROL_LISTEN_PORT 	(8124)
 //#define CLI_TASK_LISTEN_PORT 		(8125)
 
-#define INVAILD_USERID 		(~0LL)
-#define INVAILD_GROUPID 	(~0LL)
+#define INVAILD_USERID 		(~0L)
+#define INVAILD_GROUPID 	(~0L)
+#define INVAILD_TASKID 		(~0L)
 
 /*client  ---->  center server */
 enum cli_center_msg_type {
@@ -31,8 +32,11 @@ enum cli_center_msg_type {
 /* center server ----> client */
 enum center_cli_msg_type {
 	MSG_CENTER_ACK,
-	MSG_LOGIN_RESULT,
-	MSG_LIST_GROUP_RESULT,
+	MSG_LOGIN_RESPONSE,
+	MSG_CREATE_GROUP_RESPONSE,
+	MSG_LIST_GROUP_RESPONSE,
+	MSG_JOIN_GROUP_RESPONSE,
+	MSG_GROUP_DELETE,
 	MSG_HANDLE_ERR,
 };
 
@@ -47,16 +51,6 @@ enum client_msg_type {
 	PACK_STATE_IMG,
 };
 
-typedef struct _pack_header {
-	uint16_t magic;
-	uint8_t version;
-	uint8_t type;
-	uint16_t seqnum;
-	uint8_t _reserved1;
-	uint8_t _reserved2;
-	uint32_t datalen;
-	uint8_t data[0];
-}__attribute__((packed)) pack_head_t;
 
 #define GROUP_NAME_MAX 		(32)
 #define GROUP_PASSWD_MAX 	(32)
@@ -90,8 +84,9 @@ struct pack_leave_group {
 	uint32_t userid;
 };
 
-
+/* also used for join group result. */
 struct pack_creat_group_result {
+	uint32_t groupid;
 	uint32_t taskid;
 	struct sockaddr addr;
 };
@@ -118,27 +113,6 @@ typedef struct _group {
 	char name[0];
 } group_t;
 
-
-
-static inline pack_head_t *create_pack(uint8_t type, uint32_t len)
-{
-	pack_head_t *pack;
-	pack = malloc(sizeof(*pack) + size);	
-	if(!pack)
-		return NULL;
-
-	pack->magic = SERV_MAGIC;
-	pack->version = SERV_VERSION;
-
-	pack->type = type;
-	pack->datalen = len;
-	return pack;
-}
-
-static inline void free_pack(pack_head_t *pack)
-{
-	free(pack);
-}
 
 
 #endif

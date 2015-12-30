@@ -22,20 +22,51 @@ struct task_operations {
 	struct listnode node;
 
 	/* used by node manager only */
-	int (*create_assign_pkt)(task_baseinfo_t *base, struct pack_task_base **pkt);
-	int (*create_reclaim_pkt)(task_baseinfo_t *base, struct pack_task_base **pkt);
-	int (*create_control_pkt)(task_baseinfo_t *base, struct pack_task_base **pkt);
+	int (*create_assign_pkt)(task_baseinfo_t *base, struct pack_task_assign **pkt);
+	int (*create_reclaim_pkt)(task_baseinfo_t *base, struct pack_task_reclaim **pkt);
+	int (*create_control_pkt)(task_baseinfo_t *base, struct pack_task_control **pkt);
 
 	/* used by node server only */
-	task_t* (*assign_handle)(struct pack_task_base *pkt);
-	int (*reclaim_handle)(task_t *task, struct pack_task_base *pkt);
-	int (*control_handle)(task_t *task, struct pack_task_base *pkt);
+	task_t* (*assign_handle)(struct pack_task_assign *pkt);
+	int (*reclaim_handle)(task_t *task, struct pack_task_reclaim *pkt);
+	int (*control_handle)(task_t *task, struct pack_task_control *pkt);
 
 	int (*create_assign_response_pkt)(task_t *task, struct pack_task_base **pkt);
 
 	int (*task_handle)(task_t *task, struct pack_task_req *pack);
 };
 
+static inline int default_create_assign_pkt(task_baseinfo_t *base, struct pack_task_assign **pkt)
+{
+	int len = sizeof(struct pack_task_assign);
+
+	*pkt = (struct pack_task_assign *)malloc(len);
+	return len;
+}
+
+static inline int default_create_reclaim_pkt(task_baseinfo_t *base, struct pack_task_reclaim **pkt)
+{
+	int len = sizeof(struct pack_task_reclaim);
+
+	*pkt = (struct pack_task_reclaim *)malloc(len);
+	return len;
+}
+
+static inline int default_create_control_pkt(task_baseinfo_t *base, struct pack_task_control **pkt)
+{
+	int len = sizeof(struct pack_task_control);
+
+	*pkt = (struct pack_task_control *)malloc(len);
+	return len;
+}
+
+static inline int default_create_assign_response_pkt(struct pack_task_assign_response **pkt)
+{
+	int len = sizeof(struct pack_task_assign_response);
+
+	*pkt = (struct pack_task_assign_response *)malloc(len);
+	return len;
+}
 
 #endif
 

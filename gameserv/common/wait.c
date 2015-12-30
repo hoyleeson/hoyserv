@@ -34,3 +34,65 @@ int wait_obj_destory(wait_obj_t *wait)
 {
 	return sem_destroy(&wait->sem);
 }
+
+struct response_node {
+	int type;
+	uint64_t key;
+	void *response;
+	wait_obj_t wait;
+};
+
+static int int64_hash(void *key)
+{
+	return hashmapHash(key, sizeof(uint64_t));
+}
+
+static bool int64_equals(void* keyA, void* keyB) 
+{
+	uint64_t a = *(uint64_t *)keyA;
+	uint64_t b = *(uint64_t *)keyB;
+	  
+	return (a == b);
+}
+
+int response_wait_init(response_wait_t *wait, int capacity)
+{
+	wait->waits_map = hashmapCreate(capacity, int64_hash, int64_equals);
+	return 0;
+}
+
+int wait_for_response(response_wait_t *wait, int type, int seq, void *response)
+{
+	int ret;
+	struct response_node expect;
+
+	expect.type = type;
+	expect.key = (uint64_t)type << 32 | seq;
+	expect.response = response;
+	wait_obj_init(&expect.wait);
+
+	hashmapPut(cli->waits_map, type, &expect);
+	ret = wait_for_obj_timeout(&expect.wait, WAIT_PACKET_TIMEOUT_MS);
+	
+	hashmapRemove(cli->waits_map, type);
+	return ret;
+}
+
+
+void post_response(response_wait_t *wait, int type, int seq, void *response,
+	   	void (*fn)(void *dst, void *src))
+{
+	uint64_t key;
+	struct response_node *expect;
+
+	key = (uint64_t)type << 32 | seq;
+	expect = hashmapGet(cli->waits_map, key);
+	if(!expect)
+		return;
+
+	fn(expect->response, response);
+
+	post_obj(&expect->wait);
+}
+
+

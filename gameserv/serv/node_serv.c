@@ -143,11 +143,11 @@ static int task_req_handle(struct pack_task_req *pack)
 }
 
 
-int task_worker_send_packet(task_t *task, void *data, int len, struct sockaddr *to)
+int task_worker_send_packet(task_t *task, const uint8_t *data, int len)
 {
 	task_worker_t *worker = task->worker;
 
-	fdhandler_sendto(worker->hand, data, len, to);
+	fdhandler_send(worker->hand, data, len);
 }
 
 
@@ -227,7 +227,7 @@ static void free_task_worker(task_worker_t *worker)
 }
 
 
-static task_t *node_serv_task_assign(struct pack_task_base *pt)
+static task_t *node_serv_task_assign(struct pack_task_assign *pt)
 {
 	struct task_operations *ops;
 
@@ -235,41 +235,67 @@ static task_t *node_serv_task_assign(struct pack_task_base *pt)
 	if(!ops)
 		return -EINVAL;
 
-	task = ops->assign_handle(pkt);
+	task = ops->assign_handle(pt);
 
 	task->taskid = pt->taskid;
 	task->type = pt->type;
-//	task->priority = priority;
+	task->priority = pt->priority;
 
 	task->ops = ops;
 
 	return task;
 }
 
-static inline int node_serv_task_reclaim(task_t *task, struct pack_task_base *pt)
+static inline int node_serv_task_reclaim(task_t *task, struct pack_task_reclaim *pt)
 {
 	struct task_operations *ops = task->ops;
 
-	return ops->reclaim_handle(task, pt);
+	if(ops->reclaim_handle)
+		return ops->reclaim_handle(task, pt);
+
+	return -EINVAL;
 }
 
-static inline int node_serv_task_control(task_t *task, struct pack_task_base *pt)
+static inline int node_serv_task_control(task_t *task, struct pack_task_control *pt)
 {
 	struct task_operations *ops = task->ops;
 
-	return ops->control_handle(task, pt);
+	if(ops->control_handle)
+		return ops->control_handle(task, opt, pt);
+
+	return -EINVAL;
 }
 
-static inline int task_assign_response(node_serv_t *ns, task_t *task)
-{
-	struct pack_task_base *pt;
-	struct task_operations *ops = task->ops;
-	
-	pt = ops->create_assign_response_pkt(task);
-	pt->taskid = task->taskid;
-	pt->type = task->type;
 
-	return pt;
+static inline int create_task_assign_response_pkt(task_handle_t *task, task_baseinfo_t *base,
+	   	struct pack_task_assign **pkt)
+{
+	struct task_operations *ops = task->ops;
+
+	if(ops->create_assign_response_pkt)
+		return ops->create_assign_response_pkt(base, pkt);
+
+	return default_create_assign_response_pkt(base, pkt);
+}
+
+
+static inline int task_assign_response(task_t *task)
+{
+	int len;
+	struct pack_task_assign_response *pkt;
+	task_worker_t *worker = task->worker;
+	struct task_operations *ops = task->ops;
+
+	len = ops->create_assign_response_pkt(task, &pkt);
+
+	MSG_TASK_ASSIGN_RESPONSE;
+
+	pkt->taskid = task->taskid;
+	pkt->type = task->type;
+
+	pkt->addr = worker->addr;
+
+	task_worker_send_packet(task, (const uint8_t *)pkt, len);
 }
 
 static void node_serv_handle(void *opaque, uint8_t *data, int len)
@@ -277,7 +303,6 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 	int ret;
 	node_serv_t *ns = (node_serv_t *)opaque;
 	pack_head_t *head;
-	struct pack_task_base *pt;
 	task_t *task;
 	void *payload;
 
@@ -286,7 +311,6 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 
 	head = (pack_head_t *)data;
 	payload = head + 1; 
-	pt = (struct pack_task_assign *)payload;
 
 	if(head->magic != TURN_SERV_MAGIC ||
 		   	head->version != TURN_VERSION)
@@ -294,22 +318,31 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 
 	switch(head->type) {
 		case MSG_TASK_ASSIGN:
+		{
+			struct pack_task_assign *pt = (struct pack_task_assign *)payload;
 			task = node_serv_task_assign(pt);
 			node_serv_task_register(ns, task);
 
-			task_assign_response(ns, task);
+			task_assign_response(task);
 			break;
+		}
 		case MSG_TASK_RECLAIM:
+		{
+			struct pack_task_reclaim *pt = (struct pack_task_reclaim *)payload;
 			task = find_node_serv_task(pt->taskid);
 
 			node_serv_task_unregister(ns, task);
 			node_serv_task_reclaim(task, pt);
 			break;
+		}
 		case MSG_TASK_CONTROL:
+		{
+			struct pack_task_control *pt = (struct pack_task_control *)payload;
 			task = find_node_serv_task(pt->taskid);
 
 			node_serv_task_control(task, pt);
 			break;
+		}
 		default:
 			break;
 	}

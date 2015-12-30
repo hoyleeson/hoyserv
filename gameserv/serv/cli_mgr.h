@@ -17,7 +17,7 @@ enum user_state {
 #define HBEAT_INIT 		(5)
 
 struct _user_info {
-	uint32_t userid;
+	uint32_t userid; 	/* session id */
 	int state;
 	struct sockaddr addr;
 	group_info_t *group;
@@ -36,7 +36,7 @@ struct _group_info {
 
 	int users;
 	struct listnode userlist;
-	unsigned int taskid;
+	unsigned long turn_handle;
 };
 
 typedef _cli_mgr {

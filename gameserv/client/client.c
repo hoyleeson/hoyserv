@@ -13,6 +13,7 @@
 #include "client.h"
 
 #define FRAGMENT_MAX_LEN 	(512)
+#define WAIT_PACKET_TIMEOUT_MS 		(10 * 1000)
 
 struct pack_cli_msg {
 	struct pack_task_req base;
@@ -35,6 +36,7 @@ struct client_control {
 
 
 struct client_task {
+	uint32_t taskid;
 	fdhandler_t *hand;
 	uint16_t nextseq;
 	struct sockaddr_in serv_addr;
@@ -50,7 +52,7 @@ struct client {
 	uint32_t groupid;
 	int mode;
 	event_cb callback;
-	Hashmap *waits_map;
+	response_wait waits;
 
 	struct client_control control;
 	struct client_task task;
@@ -70,27 +72,18 @@ static void client_send_pack(pack_head_t *pkt)
 		   	&cli->control.serv_addr);
 }
 
-struct expect_res {
-	int type;
-	void *response;
-	wait_obj_t wait;
-};
 
-#define WAIT_PACKET_TIMEOUT_MS 		(10 * 1000)
-
-static int cli_wait_for_reponse(struct client *cli, int type, void *response)
+static void cli_response_post(struct client *cli, int type, void *response,
+	   	void (*fn)(void *, void *))
 {
-	int ret;
-	struct expect_res expect;
+	struct expect_res *expect;
+	expect = hashmapGet(cli->waits_map, head->type);
+	if(!expect)
+		return;
 
-	expect.type = type;
-	wait_obj_init(&expect.wait);
+	fn(expect->response, response);
 
-	hashmapPut(cli->waits_map, type, &expect);
-	ret = wait_for_obj_timeout(&expect.wait, WAIT_PACKET_TIMEOUT_MS);
-	
-	hashmapRemove(cli->waits_map, type);
-	return ret;
+	post_obj(&expect->wait);
 }
 
 int client_login(void)
@@ -104,7 +97,7 @@ int client_login(void)
 
 	client_send_pack(pack);
 
-	ret = cli_wait_for_reponse(cli, MSG_LOGIN_RESULT, &userid);
+	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, &userid);
 	if(ret)
 		return -EINVAL;
 
@@ -130,6 +123,7 @@ int client_create_group(int open, const char *name, const char *passwd)
 	pack_head_t *pack;
 	struct client *cli = _client;
 	struct pack_creat_group *p;
+	struct pack_creat_group_result result;
 
 	pack = create_pack(MSG_CLI_CREATE_GROUP, sizeof(*p));
 	p = (struct pack_creat_group *)pack->data;
@@ -148,9 +142,14 @@ int client_create_group(int open, const char *name, const char *passwd)
 
 	client_send_pack(pack);
 
-	ret = cli_wait_for_reponse(cli, MSG_LOGIN_RESULT);
+	ret = wait_for_reponse(&cli->waits, MSG_CREATE_GROUP_RESPONSE, 0, &result); /* XXX */
+	if(ret)
+		return -EINVAL;
 
-	cli->groupid = groupid;
+	cli->groupid = result->groupid;
+	cli->task.taskid = result->taskid;
+	cli->task.serv_addr = result->addr;
+
 	return 0;
 }
 
@@ -180,12 +179,15 @@ int client_list_group(group_t *group)
 	p->userid = cli->userid;
 
 	client_send_pack(pack);
-	wait();
-	
+
+	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, &result); /* XXX */
+	if(ret)
+		return -EINVAL;
+
 }
 
 
-void client_join_group(group_t *group, const char *passwd)
+int client_join_group(group_t *group, const char *passwd)
 {
 	pack_head_t *pack;
 	struct pack_join_group *p;
@@ -198,6 +200,16 @@ void client_join_group(group_t *group, const char *passwd)
 	p->groupid = group->groupid;
 
 	client_send_pack(pack);
+
+	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, &result); /* XXX */
+	if(ret)
+		return -EINVAL;
+
+	cli->groupid = result->groupid;
+	cli->task.taskid = result->taskid;
+	cli->task.serv_addr = result->addr;
+
+	return 0;
 }
 
 
@@ -216,10 +228,9 @@ void client_leave_group(void)
 }
 
 
-static pack_head_t *create_task_req_pack(int type, uint32_t priv_size)
+static pack_head_t *create_task_req_pack(struct client *cli, int type, uint32_t priv_size)
 {
 	pack_head_t *pack;
-	struct client *cli = _client;
 	struct pack_task_req *p;
 
 	pack = create_pack(MSG_TASK_REQ, priv_size);
@@ -235,8 +246,13 @@ void client_send_command(void *data, int len)
 {
 	pack_head_t *pack;
 	struct pack_cli_msg *p;
+	struct client *cli = _client;
 
-	pack = create_task_req_pack(TASK_TURN, sizeof(*p)+len);
+	if(cli->task.taskid == INVAILD_TASKID) {
+		return;	
+	}
+
+	pack = create_task_req_pack(cli, TASK_TURN, sizeof(*p)+len);
 	p = (struct pack_creat_group *)pack->data;
 
 	p->type = PACK_COMMAND;
@@ -250,8 +266,13 @@ void client_send_state_img(void *data, int len)
 {
 	pack_head_t *pack;
 	struct pack_cli_msg *p;
+	struct client *cli = _client;
 
-	pack = create_task_req_pack(TASK_TURN, sizeof(*p)+len);
+	if(cli->task.taskid == INVAILD_TASKID) {
+		return;	
+	}
+
+	pack = create_task_req_pack(cli, TASK_TURN, sizeof(*p)+len);
 	p = (struct pack_creat_group *)pack->data;
 
 	p->type = PACK_STATE_IMG;
@@ -297,26 +318,28 @@ static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 	cli_mgr_send_ack(cm, head);
 
 	switch(head->type) {
-		case MSG_LOGIN_RESULT:
+		case MSG_LOGIN_RESPONSE:
 		{
-			struct expect_res *expect;
-			expect = hashmapGet(cli->waits_map, head->type);
-			if(!expect)
-				return;
-			/* userid */
-			*(uint32_t *)expect->response = *(uint32_t *)payload;
+			uint32_t userid = *(uint32_t *)payload;
+			response_post(&cli->waits, head->type, 0, &userid);
 			break;
 		}
-		case MSG_LIST_GROUP_RESULT:
+		case MSG_CREATE_GROUP_RESPONSE:
+		case MSG_JOIN_GROUP_RESPONSE:
 		{
-			struct expect_res *expect;
-			expect = hashmapGet(cli->waits_map, head->type);
-			if(!expect)
-				return;
-			/* userid */
-			*(uint32_t *)expect->response = *(uint32_t *)payload;
+			struct pack_creat_group_result *gres;
+			gres = (struct pack_creat_group_result *)payload;
+
+			response_post(&cli->waits, head->type, 0, gres);
 			break;
 		}
+		case MSG_LIST_GROUP_RESPONSE:
+		{
+			break;
+		}
+		case MSG_GROUP_DELETE:
+			cli->groupid = INVAILD_GROUPID;
+			cli->task.taskid = INVAILD_TASKID;
 			break;
 		case MSG_HANDLE_ERR:
 			break;
@@ -404,7 +427,15 @@ static void cli_task_close(void *user)
 
 static void *client_thread_handle(void *args)
 {
-	iohandler_loop();
+	struct client *cli = &_client;
+
+    for (;;) {
+		if(!cli->running)
+			break;
+
+		iohandler_once();
+    }
+
 	return 0;
 }
 
@@ -437,16 +468,6 @@ int client_task_start(const char *host, int port, uint32_t userid, uint32_t grou
 
 #define HASH_WAIT_OBJ_CAPACITY 	(256)
 
-static int int_hash(void *key)
-{
-	return (int) key;
-}
-
-static bool int_equals(void* keyA, void* keyB) 
-{
-	return (keyA == keyB);
-}
-
 int client_init(const char *host, int mode, event_cb callback) 
 {
 	int ctlfd;
@@ -457,7 +478,8 @@ int client_init(const char *host, int mode, event_cb callback)
 
 	iohandler_init();
 
-	cli->waits_map = hashmapCreate(HASH_WAIT_OBJ_CAPACITY, int_hash, int_equals);
+	response_wait_init(&cli->waits, HASH_WAIT_OBJ_CAPACITY);
+
 	cli->callback = callback;
 
 	ret = pthread_create(&th, NULL, client_thread_handle, cli);
@@ -485,4 +507,13 @@ int client_init(const char *host, int mode, event_cb callback)
 	return 0;
 }
 
+cli_state_t *client_state_save(void)
+{
+
+}
+
+int client_state_load(cli_state_t *state)
+{
+
+}
 

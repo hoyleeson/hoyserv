@@ -411,6 +411,15 @@ static void fdhandler_enqueue(fdhandler_t*  f, packet_t*  p)
     }
 }
 
+void *fdhandler_get_packet(void)
+{
+    packet_t*   p;
+   
+	p = packet_alloc();
+
+	return &p->data;
+}
+
 void fdhandler_send(fdhandler_t *f, const uint8_t *data, int len) 
 {
     packet_t*   p;

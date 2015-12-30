@@ -3,13 +3,6 @@
 #include <string.h>
 #include <stdio.h>
 
-typedef struct _task_handle {
-	int taskid;
-	int type;
-	int priority;
-
-	node_info_t *node;
-} task_handle_t;
 
 static struct listnode task_protos_list;
 static pthread_mutex_t task_protos_lock;
@@ -48,15 +41,47 @@ static void node_unregister(node_mgr_t *mgr, node_info_t *node)
 }
 
 
-static nodemgr_task_send(node_info_t *node, const uint8_t data, int len)
+static nodemgr_task_send(node_info_t *node, const uint8_t *data, int len)
 {
 	fdhandler_send(node->hand, data, len);
 }
 
-
-static void node_hand_func(void* user, uint8_t *data, int len)
+#if 0
+static void copy_sockaddr(void *dst, void *src)
 {
-	
+	*(struct sockaddr *)dst = *(struct sockaddr *)src;
+}
+#endif
+
+static void node_hand_fn(void* opaque, uint8_t *data, int len)
+{
+	int ret;
+	node_info_t *node = (node_serv_t *)opaque;
+	pack_head_t *head;
+	task_t *task;
+	void *payload;
+
+	if(data == NULL || len < sizeof(*head))
+		return;
+
+	head = (pack_head_t *)data;
+	payload = head + 1; 
+
+	if(head->magic != TURN_SERV_MAGIC ||
+		   	head->version != TURN_VERSION)
+		return;
+
+	switch(head->type) {
+		case MSG_TASK_ASSIGN_RESPONSE:
+		{
+			struct pack_task_assign_response *pt;
+			pt = (struct pack_task_assign_response *)payload;
+			response_post(&node->waits, MSG_TASK_ASSIGN_RESPONSE, pt->taskid, &pt->addr);
+			break;
+		}
+		default:
+			break;
+	}
 }
 
 static void node_close_fn(void *user)
@@ -77,7 +102,9 @@ static void nodemgr_accept_func(void* user, int acceptfd)
 
 	node->fd = acceptfd;
 	node->mgr = mgr;
-	node->hand = fdhandler_create(acceptfd, nodemgr_hand_fn, nodemgr_close_fn, node);
+	node->hand = fdhandler_create(acceptfd, node_hand_fn, node_close_fn, node);
+
+	response_wait_init(&node->waits, HASH_WAIT_OBJ_CAPACITY);
 	
 	node_register(mgr, node);
 }
@@ -92,115 +119,127 @@ static node_info_t *nodemgr_choice_node(node_mgr_t *mgr, int priority)
 }
 
 
-static int create_task_assign_pkt(int type, task_baseinfo_t *base,
-	   	struct pack_task_base **pkt)
+static int create_task_assign_pkt(task_handle_t *task, task_baseinfo_t *base,
+	   	struct pack_task_assign **pkt)
 {
-	struct task_operations *ops;
+	struct task_operations *ops = task->ops;
 
-	ops = find_task_protos_by_type(type);
-	if(!ops)
-		return -EINVAL;
+	if(ops->create_assign_pkt)
+		return ops->create_assign_pkt(base, pkt);
 
-	return ops->create_assign_pkt(base, pkt);
+	return default_create_assign_pkt(base, pkt);
 }
 
 
-unsigned long nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
+task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 		task_baseinfo_t *base)
 {
 	int len;
 	node_info_t *node;
-	struct pack_task_base *pkt;
-	task_handle_t *handle;
+	pack_buf_t *pkb;
+	struct pack_task_assign *pkt;
+	task_handle_t *task;
 
 	if(!mgr)
 		return -EINVAL;
 
-	handle = malloc(sizeof(*handle));
-	if(!handle)
+	task = malloc(sizeof(*task));
+	if(!task)
 		return -EINVAL;
 
 	node = nodemgr_choice_node(mgr, priority);
-	handle->node = node;
-	handle->taskid = alloc_taskid(mgr);
-	handle->type = type;
-	handle->priority = priority;
 
-	len = create_task_assign_pkt(type, base, &pkt);
+	task->node = node;
+	task->taskid = alloc_taskid(mgr);
+	task->type = type;
+	task->priority = priority;
+	task->ops = find_task_protos_by_type(type);
 
-	pkt->type = MSG_TASK_ASSIGN;
-	pkt->taskid = handle->taskid;
-//	pkt->priority = handle->priority;
+	pkb = alloc_pack_buf();
+	len = init_task_assign_pkt(task, base, &pkt);
+
+	MSG_TASK_ASSIGN;
+
+	pkt->type = task->type;
+	pkt->taskid = task->taskid;
+	pkt->priority = task->priority;
 	nodemgr_task_send(node, (const uint8_t)pkt, len);
 
-	nodemgr_wait_for_response();
-	return (unsigned long)handle;
+	wait_for_response(&node->waits, MSG_TASK_ASSIGN_RESPONSE, task->taskid, &task->addr);
+
+	return task;
 }
 
 
-static int create_task_reclaim_pkt(int type, task_baseinfo_t *base,
-	   	struct pack_task_base **pkt)
+static int create_task_reclaim_pkt(task_handle_t *task, task_baseinfo_t *base,
+	   	struct pack_task_reclaim **pkt)
 {
-	struct task_operations *ops;
+	struct task_operations *ops = task->ops;
 
-	ops = find_task_protos_by_type(type);
-	if(!ops)
-		return -EINVAL;
+	if(ops->create_reclaim_pkt)
+		return ops->create_reclaim_pkt(base, pkt);
 
-	return ops->create_reclaim_pkt(base, pkt);
+	return default_create_reclaim_pkt(base, pkt);
 }
 
 
-int nodemgr_task_reclaim(node_mgr_t *mgr, unsigned int handle,
+int nodemgr_task_reclaim(node_mgr_t *mgr, task_handle_t *task,
 		task_baseinfo_t *base)
 {
 	int len;
 	node_info_t *node;
-	struct pack_task_base *pkt;
-	task_handle_t *task = (task_handle_t *)handle;
+	struct pack_task_reclaim *pkt;
 
 	if(!mgr)
 		return -EINVAL;
 
 	node = task->node;
 
-	len = create_task_reclaim_pkt(base, &pkt);
+	len = create_task_reclaim_pkt(task, base, &pkt);
 
-	pkt->type = MSG_TASK_RECLAIM;
+	MSG_TASK_RECLAIM
+
+	pkt->taskid = task->taskid;
+	pkt->type = task->type;
+
 	nodemgr_task_send(node, (const uint8_t)pkt, len);
 	return 0;
 }
 
 
-static int create_task_control_pkt(int type, task_baseinfo_t *base,
-	   	struct pack_task_base **pkt)
+static int create_task_control_pkt(task_handle_t *task, task_baseinfo_t *base,
+	   	struct pack_task_control **pkt)
 {
-	struct task_operations *ops;
+	struct task_operations *ops = task->ops;
 
-	ops = find_task_protos_by_type(type);
-	if(!ops)
-		return -EINVAL;
+	if(ops->create_control_pkt)
+		return ops->create_control_pkt(base, pkt);
 
-	return ops->create_control_pkt(base, pkt);
+	return default_create_control_pkt(base, pkt);
 }
 
 
-int nodemgr_task_control(node_mgr_t *mgr, unsigned int handle,
-	   	task_baseinfo_t *base)
+int nodemgr_task_control(node_mgr_t *mgr, task_handle_t *task,
+	   	int opt, task_baseinfo_t *base)
 {
 	int len;
 	node_info_t *node;
-	struct pack_task_base *pkt;
+	struct pack_task_control *pkt;
 
 	if(!task || !mgr)
 		return -EINVAL;
 
-	node = (node_info_t *)handle;
+	node = task->node;
 
 	len = create_task_control_pkt(task, &pkt);
 
-	pkt->type = MSG_TASK_CONTROL;
-	nodemgr_task_send(node, (const uint8_t)pkt, len);
+	MSG_TASK_CONTROL
+
+	pkt->taskid = task->taskid;
+	pkt->type = task->type;
+	pkt->opt = opt;
+
+	nodemgr_task_send(node, (const uint8_t *)pkt, len);
 	return 0;
 }
 

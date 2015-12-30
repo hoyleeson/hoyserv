@@ -11,7 +11,6 @@ struct turn_assign_data {
 
 struct turn_control_data {
 	task_baseinfo_t base;
-	int opt;
 	user_info_t *user;
 };
 
@@ -24,35 +23,42 @@ enum turn_control_type {
 
 unsigned long turn_task_assign(node_mgr_t *mgr, group_info_t *group)
 {
+	task_handle_t *task;
 	turn_assign_data data;
 
 	init_taskbase_info(&data.base);
 	data.group = group;
 
-	return nodemgr_task_assign(mgr, TASK_TURN, TASK_PRIORITY_NORMAL, &data.base);
+	task = nodemgr_task_assign(mgr, TASK_TURN, TASK_PRIORITY_NORMAL, &data.base);
+
+	return (unsigned long)task;
 }
 
-int turn_task_reclaim(node_mgr_t *mgr, unsigned int handle)
+int turn_task_reclaim(node_mgr_t *mgr, unsigned long handle)
 {
-	return nodemgr_task_reclaim(mgr, NULL);
+	return nodemgr_task_reclaim(mgr, (task_handle_t *)handle, NULL);
 }
 
-int turn_task_control(node_mgr_t *mgr, unsigned int handle, int opt, user_info_t *user)
+int turn_task_control(node_mgr_t *mgr, unsigned long handle, int opt, user_info_t *user)
 {
-	turn_control_t data;
+	turn_control_data data;
 
-	data.opt = opt;
 	data.user = user;
-	return nodemgr_task_control(mgr, &data.base);
+	return nodemgr_task_control(mgr, (task_handle_t *)handle, opt, &data.base);
 }
 
-int get_turn_serv_addr() 
+int get_turn_info(node_mgr_t *mgr, unsigned int handle, struct turn_info *info)
 {
+	task_handle_t *task = (task_handle_t *)handle;
 
+	info->taskid = task->taskid;
+	info->addr = task->addr;
+	
+	return 0;
 }
 
 static int create_turn_task_assign(task_baseinfo_t *base, 
-		struct pack_task_base **pkt)
+		struct pack_task_assign **pkt)
 {
 	int i = 0;
 	int len;
@@ -65,7 +71,7 @@ static int create_turn_task_assign(task_baseinfo_t *base,
 		return;
 
 	len = sizeof(*ta) + sizeof(client_tuple_t)*turn->cli_count;
-	*pkt = (struct pack_task_base *)malloc(len);
+	*pkt = (struct pack_task_assign *)malloc(len);
 	ta = *pkt;
 
 	ta->groupid = group->groupid;
@@ -85,19 +91,19 @@ static int create_turn_task_assign(task_baseinfo_t *base,
 
 
 static void create_turn_task_reclaim(task_baseinfo_t *base, 
-		struct pack_task_base **pkt)
+		struct pack_task_reclaim **pkt)
 {
 	int len;
 
 	len = sizeof(struct pack_turn_reclaim);
-	*pkt = (struct pack_task_base *)malloc(len);
+	*pkt = (struct pack_task_reclaim *)malloc(len);
 
 	return len;	
 }
 
 
 static void create_turn_task_control(task_baseinfo_t *base,
-	   	struct pack_task_base **pkt)
+	   	struct pack_task_control **pkt)
 {
 	int i = 0;
 	int len;
@@ -108,7 +114,7 @@ static void create_turn_task_control(task_baseinfo_t *base,
 	user = data->user;
 
 	len = sizeof(*tc);
-	*pkt = (struct pack_task_base *)malloc(len);
+	*pkt = (struct pack_task_control *)malloc(len);
 	tc = *pkt;
 
 	tc->opt = data->opt;
@@ -124,7 +130,7 @@ struct turn_task {
 	client_tuple_t tuple[GROUP_MAX_USER];
 };
 
-static task_t *turn_task_assign_handle(struct pack_task_base *pkt)
+static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
 {
 	int i;
 	struct pack_turn_assign *ta;
@@ -146,7 +152,7 @@ static task_t *turn_task_assign_handle(struct pack_task_base *pkt)
 }
 
 
-static int turn_task_reclaim_handle(task_t *task, struct pack_task_base *pkt)
+static int turn_task_reclaim_handle(task_t *task, struct pack_task_reclaim *pkt)
 {
 /*	struct pack_turn_reclaim *tr;
 
@@ -156,7 +162,7 @@ static int turn_task_reclaim_handle(task_t *task, struct pack_task_base *pkt)
 	return 0;
 }
 
-static int turn_task_control_handle(task_t *task, struct pack_task_base *pkt)
+static int turn_task_control_handle(task_t *task, struct pack_task_control *pkt)
 {
 	struct pack_turn_control *tc;
 	struct turn_task *ttask;
@@ -185,11 +191,19 @@ static int turn_task_control_handle(task_t *task, struct pack_task_base *pkt)
 
 	return 0;
 }
-
+/*
 int create_turn_task_assign_response(task_t *task, struct pack_task_base **pkt)
 {
+	struct pack_turn_assign_response *response;
+	int len;
+
+	len = sizeof(*ta) + sizeof(client_tuple_t)*turn->cli_count;
+	*pkt = (struct pack_task_base *)malloc(len);
+
+	response = *pkt;
 
 }
+*/
 
 
 static int turn_task_handle(task_t *task, struct pack_task_req *pack)
@@ -228,7 +242,7 @@ struct task_operations turn_ops = {
 	.reclaim_handle = turn_task_reclaim_handle,
 	.control_handle = turn_task_control_handle,
 
-	.create_assign_response_pkt = create_turn_task_assign_response,
+//	.create_assign_response_pkt = create_turn_task_assign_response,
 
 	.task_handle = turn_task_handle,
 };

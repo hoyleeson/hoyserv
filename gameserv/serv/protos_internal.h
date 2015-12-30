@@ -10,7 +10,7 @@ enum node_center_msg_type {
 	 * MSG_NODE_REGISTER,
 	 * MSG_NODE_UNREGISTER, 
 	 */
-	MSG_TASK_ASSIGN_RESULT,
+	MSG_TASK_ASSIGN_RESPONSE,
 };
 
 /* center server ----> node server */
@@ -28,31 +28,29 @@ enum task_type {
 #define TASK_PRIORITY_MAX 		(8)
 #define TASK_PRIORITY_NORMAL 	TASK_PRIORITY_MIN
 
-#if 0
 struct pack_task_assign {
 	uint32_t taskid;
 	uint8_t type;
 	uint8_t priority;
-	uint8_t data[0];
 };
 
 struct pack_task_reclaim {
 	uint32_t taskid;
 	uint8_t type;
-	uint8_t data[0];
 };
 
 struct pack_task_control {
 	uint32_t taskid;
 	uint8_t type;
-	uint8_t data[0];
+	uint8_t opt;
 };
-#endif
 
-struct pack_task_base {
+struct pack_task_assign_reponse {
 	uint32_t taskid;
 	uint8_t type;
-	uint8_t data[0];
+	
+	/* task worker infomation */
+	struct sockaddr addr;
 };
 
 
@@ -63,19 +61,18 @@ typedef struct _client_tuple {
 
 
 struct pack_turn_assign {
-	struct pack_task_base base;
+	struct pack_task_assign base;
 	uint32_t groupid;
 	int cli_count;
 	client_tuple_t tuple[0];
 };
 
 struct pack_turn_reclaim {
-	struct pack_task_base base;
+	struct pack_task_reclaim base;
 };
 
 struct pack_turn_control {
-	struct pack_task_base base;
-	int opt;
+	struct pack_task_control base;
 	client_tuple_t tuple;
 };
 
