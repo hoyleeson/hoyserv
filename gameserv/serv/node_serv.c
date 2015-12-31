@@ -1,11 +1,28 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
+#include <stddef.h>
+#include <pthread.h>
+#include <errno.h>
 #include <sys/socket.h>
+#include <arpa/inet.h>
 
 #include <common/iohandler.h>
+#include <common/hashmap.h>
+#include <common/list.h>
+#include <common/wait.h>
+#include <common/sockets.h>
+#include <common/pack.h>
+
+#include "task.h"
+#include "serv.h"
 
 #define HASH_WORKER_CAPACITY 	(256)
 #define WORKER_MAX_TASK_COUNT 	(512)
+
+struct _node_serv;
+typedef struct _node_serv  node_serv_t;
 
 typedef struct _task_worker {
 	fdhandler_t *hand;
@@ -13,8 +30,9 @@ typedef struct _task_worker {
 	struct sockaddr addr;
 
 	int task_count;
-	struct Hashmap tasks_map; 	/*key: task id*/
+	struct Hashmap *tasks_map; 	/*key: task id*/
 
+	node_serv_t *owner;
 	struct listnode node;
 } task_worker_t;
 
@@ -30,7 +48,7 @@ struct task {
 
 /* ns: node server */
 
-typedef struct _node_serv {
+struct _node_serv {
 	int worker_count;
 	struct listnode worker_list;
 	fdhandler_t *mgr_hand;
@@ -38,7 +56,7 @@ typedef struct _node_serv {
 
 	int task_count;
 	task_worker_t *suit_worker;
-} node_serv_t;
+};
 
 static node_serv_t node_serv;
 
@@ -57,13 +75,13 @@ void release_task(task_t *task)
 }
 
 
-task_t find_node_serv_task(int taskid)
+task_t *find_node_serv_task(node_serv_t *ns, int taskid)
 {
 	task_t *task;
 	task_worker_t *worker;
 
-	list_for_each_entry(worker, ns, node) {
-		task = hashmapGet(worker->tasks_map, taskid);
+	list_for_each_entry(worker, &ns->worker_list, node) {
+		task = hashmapGet(worker->tasks_map, (void *)taskid);
 		if(task) {
 			return task;
 		}
@@ -103,15 +121,16 @@ void task_worker_pkt_sendto(task_t *task, int type,
 }
 
 /*XXX*/
-static int task_req_handle(struct pack_task_req *pack)
+static int task_req_handle(node_serv_t *ns, struct pack_task_req *pack)
 {
+	task_t *task;
 	struct task_operations *ops;
 
 	ops = find_task_protos_by_type(pack->type);
 	if(!ops)
 		return -EINVAL;
 
-	task = find_node_serv_task(pack->taskid);
+	task = find_node_serv_task(ns, pack->taskid);
 	if(!task)
 		return -EINVAL;
 
@@ -119,7 +138,7 @@ static int task_req_handle(struct pack_task_req *pack)
 }
 
 
-static void task_worker_handle(void *opaque, uint8_t *data, int len)
+static void task_worker_handle(void *opaque, uint8_t *data, int len, void *from)
 {
 	int ret;
 	task_worker_t *worker = (task_worker_t *)opaque;
@@ -132,22 +151,24 @@ static void task_worker_handle(void *opaque, uint8_t *data, int len)
 	head = (pack_head_t *)data;
 	payload = head + 1; 
 
-	if(head->magic != TURN_SERV_MAGIC ||
-			head->version != TURN_VERSION)
+	if(head->magic != SERV_MAGIC ||
+			head->version != SERV_VERSION)
 		return;
 
 	switch(head->type) {
 		case MSG_TASK_REQ:
+		{
 			struct pack_task_req *pack = (struct pack_task_req *)payload;
-			task_req_handle(pack);
+			task_req_handle(worker->owner, pack);
 			break;
+		}
 		default:
 			break;
 	}
 }
 
 
-static void task_worker_close(task_worker_t *worker)
+static void task_worker_close(void *opaque)
 {
 
 }
@@ -176,8 +197,9 @@ static task_worker_t *create_task_worker(node_serv_t *ns)
 	if(!tworker)
 		goto out;
 
-	tworker->addr = (struct sockaddr)addr;
+	tworker->addr = *((struct sockaddr *)&addr);
 	tworker->task_count = 0;
+	tworker->owner = ns;
 
 	tworker->hand = fdhandler_udp_create(sock, task_worker_handle,
 		   	task_worker_close, tworker);
@@ -198,7 +220,7 @@ static void *node_serv_pkt_alloc(node_serv_t *ns)
 {
 	packet_t *packet;
 
-	packet = fdhandler_pkt_alloc(ns->hand);
+	packet = fdhandler_pkt_alloc(ns->mgr_hand);
 
 	return packet->data + pack_head_len();
 
@@ -216,15 +238,16 @@ static void node_serv_pkt_send(node_serv_t *ns, int type, void *data, int len)
 
 	packet->len = len + pack_head_len();
 
-	fdhandler_pkt_submit(ns->hand, packet);
+	fdhandler_pkt_submit(ns->mgr_hand, packet);
 }
 
 
 static task_t *node_serv_task_assign(struct pack_task_assign *pt)
 {
+	task_t *task;
 	struct task_operations *ops;
 
-	ops = find_task_protos_by_type(task->type);
+	ops = find_task_protos_by_type(pt->type);
 	if(!ops)
 		return -EINVAL;
 
@@ -249,7 +272,7 @@ static inline int node_serv_task_reclaim(task_t *task, struct pack_task_reclaim 
 	return -EINVAL;
 }
 
-static inline int node_serv_task_control(task_t *task, struct pack_task_control *pt)
+static inline int node_serv_task_control(task_t *task, int opt, struct pack_task_control *pt)
 {
 	struct task_operations *ops = task->ops;
 
@@ -260,15 +283,15 @@ static inline int node_serv_task_control(task_t *task, struct pack_task_control 
 }
 
 
-static inline int init_task_assign_response_pkt(task_handle_t *task, task_baseinfo_t *base,
-	   	struct pack_task_assign **pkt)
+static inline int init_task_assign_response_pkt(task_t *task,
+	   	struct pack_task_assign_response *pkt)
 {
 	struct task_operations *ops = task->ops;
 
 	if(ops->init_assign_response_pkt)
-		return ops->init_assign_response_pkt(base, pkt);
+		return ops->init_assign_response_pkt(task, pkt);
 
-	return default_init_assign_response_pkt(base, pkt);
+	return default_init_assign_response_pkt(task, pkt);
 }
 
 
@@ -282,7 +305,7 @@ static int task_assign_response(node_serv_t *ns, task_t *task)
 
 	pkt = (struct pack_task_assign_response *)node_serv_pkt_alloc(ns);
 
-	len = ops->init_assign_response_pkt(task, pkt);
+	len = init_task_assign_response_pkt(task, pkt);
 
 	pkt->taskid = task->taskid;
 	pkt->type = task->type;
@@ -315,7 +338,7 @@ static int node_serv_task_register(node_serv_t *ns, task_t *task)
 		goto found;
 
 	/* slow path */
-	list_for_each_entry(pos, ns, node) {
+	list_for_each_entry(pos, &ns->worker_list, node) {
 		if(count < pos->task_count) {
 			count = pos->task_count;
 			worker = pos;
@@ -362,8 +385,8 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 	head = (pack_head_t *)data;
 	payload = head + 1; 
 
-	if(head->magic != TURN_SERV_MAGIC ||
-		   	head->version != TURN_VERSION)
+	if(head->magic != SERV_MAGIC ||
+		   	head->version != SERV_VERSION)
 		return;
 
 	switch(head->type) {
@@ -379,7 +402,7 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 		case MSG_TASK_RECLAIM:
 		{
 			struct pack_task_reclaim *pt = (struct pack_task_reclaim *)payload;
-			task = find_node_serv_task(pt->taskid);
+			task = find_node_serv_task(ns, pt->taskid);
 
 			node_serv_task_unregister(ns, task);
 			node_serv_task_reclaim(task, pt);
@@ -388,9 +411,9 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 		case MSG_TASK_CONTROL:
 		{
 			struct pack_task_control *pt = (struct pack_task_control *)payload;
-			task = find_node_serv_task(pt->taskid);
+			task = find_node_serv_task(ns, pt->taskid);
 
-			node_serv_task_control(task, pt);
+			node_serv_task_control(task, pt->opt, pt);
 			break;
 		}
 		default:
@@ -399,7 +422,7 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 }
 
 
-static void node_serv_close(node_serv_t *ns)
+static void node_serv_close(void *opaque)
 {
 
 }
@@ -415,8 +438,6 @@ int node_serv_init(const char *host)
 	ns->mgr_hand = fdhandler_create(socket, node_serv_handle, node_serv_close, ns);
 	ns->task_count = 0;
 	ns->nextseq = 0;
-
-	ns->task_hand = fdhandler_create();
 
 	return 0;
 }

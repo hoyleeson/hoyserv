@@ -1,10 +1,17 @@
 #ifndef _SERV_CLI_MGR_H_
 #define _SERV_CLI_MGR_H_
 
+#include <stdint.h>
 #include <common/list.h>
+#include <common/iohandler.h>
 #include <common/hashmap.h>
 
 #include <protos.h>
+
+#include "node_mgr.h"
+
+#define HBEAT_INIT 		(5)
+#define GROUP_MAX_USER 		(8)
 
 typedef struct _user_info user_info_t;
 typedef struct _group_info group_info_t;
@@ -14,7 +21,6 @@ enum user_state {
 	USER_STATE_LOGIN,
 };
 
-#define HBEAT_INIT 		(5)
 
 struct _user_info {
 	uint32_t userid; 	/* session id */
@@ -26,7 +32,6 @@ struct _user_info {
 	struct listnode node;
 };
 
-#define GROUP_MAX_USER 		(8)
 
 struct _group_info {
 	uint32_t groupid;
@@ -39,7 +44,7 @@ struct _group_info {
 	unsigned long turn_handle;
 };
 
-typedef _cli_mgr {
+typedef struct _cli_mgr {
 	uint32_t uid_pool; 	/* user id pool */
 	uint32_t gid_pool; 	/* group id pool */
 	fdhandler_t *hand;
@@ -49,9 +54,12 @@ typedef _cli_mgr {
 	int user_count;
 	int group_count;
 
+	node_mgr_t *node_mgr;
 	uint16_t nextseq;
 	struct listnode group_list;
 } cli_mgr_t;
+
+cli_mgr_t *cli_mgr_init(node_mgr_t *nodemgr);
 
 #endif
 

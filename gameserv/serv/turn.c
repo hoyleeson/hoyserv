@@ -15,11 +15,6 @@ struct turn_control_data {
 };
 
 
-enum turn_control_type {
-	TURN_TYPE_USER_JOIN,
-	TURN_TYPE_USER_LEAVE,
-};
-
 
 unsigned long turn_task_assign(node_mgr_t *mgr, group_info_t *group)
 {
@@ -114,7 +109,6 @@ static void init_turn_task_control(task_baseinfo_t *base,
 	tc = (struct pack_turn_control *)pkt;
 	len = sizeof(*tc);
 
-	tc->opt = data->opt;
 	tc->tuple.addr = user->addr;
 
 	return len;
@@ -159,7 +153,7 @@ static int turn_task_reclaim_handle(task_t *task, struct pack_task_reclaim *pkt)
 	return 0;
 }
 
-static int turn_task_control_handle(task_t *task, struct pack_task_control *pkt)
+static int turn_task_control_handle(task_t *task, int opt, struct pack_task_control *pkt)
 {
 	struct pack_turn_control *tc;
 	struct turn_task *ttask;
@@ -167,7 +161,7 @@ static int turn_task_control_handle(task_t *task, struct pack_task_control *pkt)
 	tc = (struct pack_turn_control *)pkt;
 	ttask = (struct turn_task *)task->priv_data;
 
-	switch(tc->opt) {
+	switch(opt) {
 		case TURN_TYPE_USER_JOIN:
 			if(ttask->cli_count >= GROUP_MAX_USER)
 				return -EINVAL;

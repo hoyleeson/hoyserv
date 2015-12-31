@@ -1,6 +1,15 @@
 #ifndef _SERV_TURN_H_
 #define _SERV_TURN_H_
 
+#include <sys/socket.h>
+#include "cli_mgr.h"
+#include "node_mgr.h"
+
+enum turn_control_type {
+	TURN_TYPE_USER_JOIN,
+	TURN_TYPE_USER_LEAVE,
+};
+
 struct turn_info
 {
 	uint32_t taskid;

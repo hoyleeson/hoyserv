@@ -1,6 +1,8 @@
 #ifndef _SERV_PROTOS_INTERNAL_H_
 #define _SERV_PROTOS_INTERNAL_H_
 
+#include <sys/socket.h>
+
 #define NODE_SERV_LOGIN_PORT 	(9123) 	/* listen by center server. */
 
 
@@ -19,10 +21,6 @@ enum center_node_msg_type {
 	MSG_TASK_RECLAIM,
 	MSG_TASK_CONTROL,
 };
-
-enum task_type {
-	TASK_TURN,
-}
 
 #define TASK_PRIORITY_MIN 		(0)
 #define TASK_PRIORITY_MAX 		(8)
@@ -45,7 +43,7 @@ struct pack_task_control {
 	uint8_t opt;
 };
 
-struct pack_task_assign_reponse {
+struct pack_task_assign_response {
 	uint32_t taskid;
 	uint8_t type;
 	

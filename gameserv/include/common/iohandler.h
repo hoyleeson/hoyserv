@@ -1,6 +1,7 @@
 #ifndef _EMUSERVD_IOHANDLER_H_
 #define _EMUSERVD_IOHANDLER_H_
 
+#include <stdint.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 

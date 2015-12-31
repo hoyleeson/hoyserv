@@ -143,6 +143,18 @@ size_t hashmapCurrentCapacity(Hashmap* map);
  */
 size_t hashmapCountCollisions(Hashmap* map);
 
+
+static inline int int_hash(void *key)
+{
+	return (int) key;
+}
+
+static inline bool int_equals(void* keyA, void* keyB) 
+{
+	return (keyA == keyB);
+}
+
+
 #ifdef __cplusplus
 }
 #endif

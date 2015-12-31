@@ -21,7 +21,6 @@
 #include "client.h"
 
 #define FRAGMENT_MAX_LEN 	(512)
-#define WAIT_PACKET_TIMEOUT_MS 		(10 * 1000)
 
 struct pack_cli_msg {
 	struct pack_task_req base;

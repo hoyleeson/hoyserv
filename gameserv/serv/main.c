@@ -1,5 +1,8 @@
+#include <unistd.h>
 #include <stdio.h>
+#include <getopt.h>
 
+#include <protos.h>
 
 #define SERV_MODE_CENTER_SERV  	(1 << 0)
 #define SERV_MODE_NODE_SERV 	 	(1 << 1)
@@ -15,7 +18,7 @@ struct {
 	{ "full", SERV_MODE_FULL_FUNC }, 
 };
 
-#define ARRAY_SIZE(x) 	((x)/((x)[0]))
+#define ARRAY_SIZE(x) 	(sizeof(x)/sizeof((x)[0]))
 
 static const struct option longopts[] = {
 	{"mode", required_argument, 0, 'm'},
@@ -38,21 +41,19 @@ static int serv_mode_parse(const char *m)
 	return SERV_MODE_UNKNOWN;
 }
 
-int main(int argc, void **argv)
+int main(int argc, char **argv)
 {
 	int opt;
 	int mode = SERV_MODE_FULL_FUNC;
 
-	while((opt=getopt_long(argc, argv,"m:vh"), longopts, NULL) != -1)
-	{
-		switch(opt)
-		{
+	while((opt = getopt_long(argc, argv, "m:vh", longopts, NULL)) > 0) {
+		switch(opt) {
 			case 'm':
 				mode = serv_mode_parse(optarg);
 				break;
 			case 'v':
 				info("compilation date: %s,time: %s, version: %d\n", 
-						__DATE__, __TIME__, VERSION);
+						__DATE__, __TIME__, SERV_VERSION);
 				return 0;
 			case 'h':
 			default:

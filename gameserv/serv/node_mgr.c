@@ -2,7 +2,14 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 
+#include <common/log.h>
+#include <common/pack.h>
+#include <common/wait.h>
+#include <arpa/inet.h>
+
+#include "node_mgr.h"
 
 static struct listnode task_protos_list;
 static pthread_mutex_t task_protos_lock;
@@ -40,7 +47,7 @@ static void node_unregister(node_mgr_t *mgr, node_info_t *node)
 	mgr->node_count--;
 }
 
-static void *nodemgr_task_pack_alloc(node_info_t *node)
+static void *nodemgr_task_pkt_alloc(node_info_t *node)
 {
 	packet_t *packet;
 	packet = fdhandler_pkt_alloc(node->hand);
@@ -72,7 +79,7 @@ static void copy_sockaddr(void *dst, void *src)
 static void node_hand_fn(void* opaque, uint8_t *data, int len)
 {
 	int ret;
-	node_info_t *node = (node_serv_t *)opaque;
+	node_info_t *node = (node_info_t *)opaque;
 	pack_head_t *head;
 	task_t *task;
 	void *payload;
@@ -83,8 +90,8 @@ static void node_hand_fn(void* opaque, uint8_t *data, int len)
 	head = (pack_head_t *)data;
 	payload = head + 1; 
 
-	if(head->magic != TURN_SERV_MAGIC ||
-		   	head->version != TURN_VERSION)
+	if(head->magic != SERV_MAGIC ||
+		   	head->version != SERV_VERSION)
 		return;
 
 	switch(head->type) {
@@ -103,31 +110,7 @@ static void node_hand_fn(void* opaque, uint8_t *data, int len)
 static void node_close_fn(void *user)
 {
 	node_info_t *node = (node_info_t *)user;
-	node_unregister(node);
-}
-
-
-static void nodemgr_accept_func(void* user, int acceptfd)
-{
-	node_info_t *node;
-	node_mgr_t *mgr = (node_mgr_t *)user;
-
-	node = malloc(sizeof(*node));
-	if(!node)
-		return;
-
-	node->fd = acceptfd;
-	node->mgr = mgr;
-	node->hand = fdhandler_create(acceptfd, node_hand_fn, node_close_fn, node);
-	node->nextseq = 0;
-
-	response_wait_init(&node->waits, HASH_WAIT_OBJ_CAPACITY);
-	
-	node_register(mgr, node);
-}
-
-static void nodemgr_close_fn(void *user)
-{
+	node_unregister(node->mgr, node);
 }
 
 static node_info_t *nodemgr_choice_node(node_mgr_t *mgr, int priority)
@@ -157,11 +140,11 @@ task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 	task_handle_t *task;
 
 	if(!mgr)
-		return -EINVAL;
+		return NULL;
 
 	task = malloc(sizeof(*task));
 	if(!task)
-		return -EINVAL;
+		return NULL;
 
 	node = nodemgr_choice_node(mgr, priority);
 
@@ -249,7 +232,7 @@ int nodemgr_task_control(node_mgr_t *mgr, task_handle_t *task,
 
 	pkt = (struct pack_task_control *)nodemgr_task_pkt_alloc(node);
 
-	len = init_task_control_pkt(task, pkt);
+	len = init_task_control_pkt(task, base, pkt);
 
 	pkt->taskid = task->taskid;
 	pkt->type = task->type;
@@ -260,18 +243,44 @@ int nodemgr_task_control(node_mgr_t *mgr, task_handle_t *task,
 }
 
 
+static void nodemgr_accept_fn(void* user, int acceptfd)
+{
+	node_info_t *node;
+	node_mgr_t *mgr = (node_mgr_t *)user;
+
+	node = malloc(sizeof(*node));
+	if(!node)
+		return;
+
+	node->fd = acceptfd;
+	node->mgr = mgr;
+	node->hand = fdhandler_create(acceptfd, node_hand_fn, node_close_fn, node);
+	node->nextseq = 0;
+
+	response_wait_init(&node->waits, HASH_WAIT_OBJ_DEFAULT_CAPACITY);
+	
+	node_register(mgr, node);
+}
+
+static void nodemgr_close_fn(void *user)
+{
+}
+
+
 node_mgr_t *node_mgr_init(void)
 {
-	nodeserv_mgr_t *nsm;
+	int sock;
+	node_mgr_t *nodemgr;
 
-	cm = malloc(sizeof(*nsm));
-	if(!tsm)
+	nodemgr = malloc(sizeof(*nodemgr));
+	if(!nodemgr)
 		return NULL;
 
-	nsm->hand = fdhandler_accept_create(clifd, nodemgr_accept_fn, nodemgr_close_fn, nsm);
+	nodemgr->hand = fdhandler_accept_create(sock, nodemgr_accept_fn, nodemgr_close_fn, nodemgr);
+	list_init(&nodemgr->nodelist);
 
 	list_init(&task_protos_list);
 
-	return nsm;
+	return nodemgr;
 }
 

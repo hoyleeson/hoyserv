@@ -5,6 +5,8 @@
 #include <semaphore.h>
 #include <common/hashmap.h>
 
+#define HASH_WAIT_OBJ_DEFAULT_CAPACITY  	(256)
+
 typedef struct _wait_obj {
 	int done;
 	sem_t sem;
@@ -26,7 +28,7 @@ struct response_node {
 	wait_obj_t wait;
 };
 
-typedef struct response_wait {
+typedef struct _response_wait {
 	Hashmap *hash;
 } response_wait_t;
 
