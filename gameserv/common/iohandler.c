@@ -260,7 +260,14 @@ static packet_t* packet_alloc(void)
     p->next    = NULL;
     p->len     = 0;
     p->channel = 0;
+	p->refcount = 1;
     return p;
+}
+
+static packet_t* packet_get(packet_t* p)
+{
+	p->refcount++;
+	return p;
 }
 
 /* Release a packet. This takes the address of a packet
@@ -411,15 +418,6 @@ static void fdhandler_enqueue(fdhandler_t*  f, packet_t*  p)
     }
 }
 
-void *fdhandler_get_packet(void)
-{
-    packet_t*   p;
-   
-	p = packet_alloc();
-
-	return &p->data;
-}
-
 void fdhandler_send(fdhandler_t *f, const uint8_t *data, int len) 
 {
     packet_t*   p;
@@ -444,6 +442,25 @@ void fdhandler_sendto(fdhandler_t *f, const uint8_t *data, int len, void *to)
     fdhandler_enqueue(f, p);
 }
 
+packet_t *fdhandler_pkt_alloc(fdhandler_t *f)
+{
+	return packet_alloc();
+}
+
+packet_t *fdhandler_pkt_get(fdhandler_t *f, packet_t *p)
+{
+	return packet_get(p);
+}
+
+void fdhandler_pkt_free(fdhandler_t *f, packet_t *p)
+{
+	packet_free(&p);
+}
+
+void fdhandler_pkt_submit(fdhandler_t *f, packet_t *p)
+{
+    fdhandler_enqueue(f, p);
+}
 
 static int fdhandler_read(fdhandler_t*  f)
 {

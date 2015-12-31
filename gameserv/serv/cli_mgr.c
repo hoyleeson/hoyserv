@@ -10,20 +10,34 @@ static int create_cli_mgr_channel(void)
 	return socket_inaddr_any_server(CLI_CONN_PORT, SOCK_DGRAM);
 }
 
-static pack_head_t *create_pack(uint8_t type, uint32_t size)
+
+static void *client_pkt_alloc(cli_mgr_t *cm)
 {
-	pack_head_t *pack;
-	pack = malloc(sizeof(*pack) + size);	
-	if(!pack)
-		return NULL;
+	packet_t *packet;
 
-	pack->magic = SERV_MAGIC;
-	pack->version = SERV_VERSION;
+	packet = fdhandler_pkt_alloc(cm->hand);
 
-	pack->type = type;
-	pack->datalen = len;
-	return pack;
+	return packet->data + pack_head_len();
+
 }
+
+static void client_pkt_sendto(cli_mgr_t *cm, int type, 
+		void *data, int len, struct sockaddr *to)
+{
+	pack_head_t *head;
+	packet_t *packet = (packet_t *)((uint8_t *)data - pack_head_len());
+
+	/* init header */
+	head = (pack_head_t *)packet->data;
+	init_pack(head, type, len);
+	head->seqnum = peer->nextseq++;
+
+	packet->len = len + pack_head_len();
+	packet->addr = *to;
+
+	fdhandler_pkt_submit(cm->hand, packet);
+}
+
 
 
 static int cli_mgr_send_pack(cli_mgr_t *cm, pack_head_t *pkt, void *to)
@@ -51,16 +65,15 @@ static int cli_ack_handle(cli_mgr_t *cm, uint16_t seqnum)
 
 }
 
-static void login_result_response(cli_mgr_t *cm, user_info_t *uinfo, struct sockaddr *to)
+static void login_result_response(cli_mgr_t *cm, 
+		user_info_t *uinfo, struct sockaddr *to)
 {
-	pack_head_t *pack;
 	uint32_t *userid;
 
-	pack = create_pack(MSG_LOGIN_RESPONSE, sizeof(uint32_t));
-	userid = (uint32_t *)pack->data;
+	userid = (uint32_t *)client_pkt_alloc(cm);
 	*userid = uinfo->userid;
 
-	cli_mgr_send_pack(cm, pack, from);
+	client_pkt_sendto(cm, MSG_LOGIN_RESPONSE, userid, sizeof(uint32_t), from);
 }
 
 static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
@@ -104,20 +117,18 @@ static int cmd_logout_handle(cli_mgr_t *cm, uint32_t uid)
 
 static void create_group_response(cli_mgr_t *cm, group_info_t *ginfo, struct sockaddr *to)
 {
-	pack_head_t *pack;
 	struct turn_info info;
 	struct pack_creat_group_result *result;
 
-	pack = create_pack(MSG_CREATE_GROUP_RESPONSE, sizeof(*result));
+	result = (struct pack_creat_group_result *)client_pkt_alloc(cm);
 
 	get_turn_info(cm->node_mgr, ginfo->turn_handle);
 
-	result = (uint32_t *)pack->data;
 	result->groupid = info->groupid;
 	result->taskid = info->taskid;
 	result->addr = info->addr;
 
-	cli_mgr_send_pack(cm, pack, from);
+	client_pkt_sendto(cm, MSG_CREATE_GROUP_RESPONSE, result, sizeof(*result), from);
 }
 
 static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
@@ -163,11 +174,13 @@ fail:
 
 static void group_delete_notify(cli_mgr_t *cm, user_info_t *user)
 {
-	pack_head_t *pack;
+	uint32_t *groupid;
+	group_info_t *ginfo = user->group;
 
-	pack = create_pack(MSG_GROUP_DELETE, sizeof(uint32_t));
+	groupid = (uint32_t *)client_pkt_alloc(cm);
+	*groupid = ginfo->groupid;
 
-	cli_mgr_send_pack(cm, pack, user->addr);
+	client_pkt_sendto(cm, MSG_GROUP_DELETE, groupid, sizeof(uint32_t), user->addr);
 }
 
 static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
@@ -191,6 +204,7 @@ static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
 			continue;
 
 		group_delete_notify(cm, user);
+		user->group = NULL;
 	}
 
 	ret = turn_task_reclaim(cm->node_mgr, ginfo->turn_handle);
@@ -244,11 +258,10 @@ static int cmd_list_group_handle(cli_mgr_t *cm, struct pack_list_group *pr)
 
 static void join_group_response(cli_mgr_t *cm, group_info_t *ginfo, struct sockaddr *to)
 {
-	pack_head_t *pack;
 	struct turn_info info;
-	struct pack_creat_group_result *result;
+	struct pack_creat_group_result *result; 	/* XXX */
 
-	pack = create_pack(MSG_JOIN_GROUP_RESPONSE, sizeof(*result));
+	result = (struct pack_creat_group_result *)client_pkt_alloc(cm);
 
 	get_turn_info(cm->node_mgr, ginfo->turn_handle);
 
@@ -257,7 +270,7 @@ static void join_group_response(cli_mgr_t *cm, group_info_t *ginfo, struct socka
 	result->taskid = info->taskid;
 	result->addr = info->addr;
 
-	cli_mgr_send_pack(cm, pack, from);
+	client_pkt_sendto(cm, MSG_JOIN_GROUP_RESPONSE, result, sizeof(*result), from);
 }
 
 static int cmd_join_group_handle(cli_mgr_t *cm, struct pack_join_group *pr)

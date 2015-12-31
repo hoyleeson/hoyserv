@@ -57,8 +57,8 @@ int get_turn_info(node_mgr_t *mgr, unsigned int handle, struct turn_info *info)
 	return 0;
 }
 
-static int create_turn_task_assign(task_baseinfo_t *base, 
-		struct pack_task_assign **pkt)
+static int init_turn_task_assign(task_baseinfo_t *base, 
+		struct pack_task_assign *pkt)
 {
 	int i = 0;
 	int len;
@@ -70,9 +70,8 @@ static int create_turn_task_assign(task_baseinfo_t *base,
 	if(!group)
 		return;
 
+	ta = (struct pack_turn_assign *)pkt;
 	len = sizeof(*ta) + sizeof(client_tuple_t)*turn->cli_count;
-	*pkt = (struct pack_task_assign *)malloc(len);
-	ta = *pkt;
 
 	ta->groupid = group->groupid;
 	ta->cli_count = group->users;
@@ -90,20 +89,18 @@ static int create_turn_task_assign(task_baseinfo_t *base,
 }
 
 
-static void create_turn_task_reclaim(task_baseinfo_t *base, 
-		struct pack_task_reclaim **pkt)
+static void init_turn_task_reclaim(task_baseinfo_t *base, 
+		struct pack_task_reclaim *pkt)
 {
 	int len;
 
 	len = sizeof(struct pack_turn_reclaim);
-	*pkt = (struct pack_task_reclaim *)malloc(len);
-
 	return len;	
 }
 
 
-static void create_turn_task_control(task_baseinfo_t *base,
-	   	struct pack_task_control **pkt)
+static void init_turn_task_control(task_baseinfo_t *base,
+	   	struct pack_task_control *pkt)
 {
 	int i = 0;
 	int len;
@@ -113,14 +110,13 @@ static void create_turn_task_control(task_baseinfo_t *base,
 
 	user = data->user;
 
+	tc = (struct pack_turn_control *)pkt;
 	len = sizeof(*tc);
-	*pkt = (struct pack_task_control *)malloc(len);
-	tc = *pkt;
 
 	tc->opt = data->opt;
 	tc->tuple.addr = user->addr;
 
-	return len;	
+	return len;
 }
 
 
@@ -192,7 +188,7 @@ static int turn_task_control_handle(task_t *task, struct pack_task_control *pkt)
 	return 0;
 }
 /*
-int create_turn_task_assign_response(task_t *task, struct pack_task_base **pkt)
+int init_turn_task_assign_response(task_t *task, struct pack_task_base *pkt)
 {
 	struct pack_turn_assign_response *response;
 	int len;
@@ -208,22 +204,20 @@ int create_turn_task_assign_response(task_t *task, struct pack_task_base **pkt)
 
 static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 {
+	void *data;
 	struct turn_task *ttask;
-	pack_head_t *head;
 	int len;
 
 	ttask = &task->priv_data;
 
-	head = create_pack(MSG_TURN_PACK, pack->datalen);
-
-	len = sizeof(*head) + pack->datalen;
-	memcpy(head->data, pack->data, pack->datalen);
+	data = task_worker_pkt_alloc(task); /* XXX */
+	memcpy(data, pack->data, pack->datalen);
 
 	for(i=0; i<ta->cli_count; i++) {
 		if(pack->userid == ttask->userid)
 			continue;
 
-		task_worker_send_packet(task, (void *)head, len, ttask->tuple[i].addr);
+		task_worker_pkt_sendto(task, MSG_TURN_PACK, data, pack->datalen, ttask->tuple[i].addr);
 	}
 
 	return 0;
@@ -233,16 +227,16 @@ struct task_operations turn_ops = {
 	.type = TASK_TURN,
 
 	/* used by node manager only */
-	.create_assign_pkt = create_turn_task_assign,
-	.create_reclaim_pkt = create_turn_task_reclaim,
-	.create_control_pkt = create_turn_task_control,
+	.init_assign_pkt = init_turn_task_assign,
+	.init_reclaim_pkt = init_turn_task_reclaim,
+	.init_control_pkt = init_turn_task_control,
 
 	/* used by node server only */
 	.assign_handle = turn_task_assign_handle,
 	.reclaim_handle = turn_task_reclaim_handle,
 	.control_handle = turn_task_control_handle,
 
-//	.create_assign_response_pkt = create_turn_task_assign_response,
+//	.init_assign_response_pkt = init_turn_task_assign_response,
 
 	.task_handle = turn_task_handle,
 };

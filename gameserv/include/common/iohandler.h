@@ -94,17 +94,18 @@ int looper_exec(looper_t* l);
  **/
 
 typedef struct _packet   packet_t;
-#define  MAX_PAYLOAD  4000
+#define  MAX_PAYLOAD 		(4000) 
 
 struct _packet {
-    packet_t*   next;
+    packet_t* next;
+	int refcount;
 	union {
-		uint32_t 	channel; 	/*used tcp accept only*/
+		uint32_t channel; 	/*used tcp accept only*/
 		struct sockaddr addr; 	/*used udp only*/
 	};
 
-    int       	len;
-    uint8_t   	data[ MAX_PAYLOAD ];
+    int len;
+    uint8_t data[MAX_PAYLOAD];
 };
 
 
@@ -192,6 +193,12 @@ struct fdhandler_list {
     fdhandler_t*   closing;
 
 };
+
+
+packet_t *fdhandler_pkt_alloc(fdhandler_t *f);
+packet_t *fdhandler_pkt_get(fdhandler_t *f, packet_t *buf);
+void fdhandler_pkt_free(fdhandler_t *f, packet_t *buf);
+void fdhandler_pkt_submit(fdhandler_t *f, packet_t *buf);
 
 void fdhandler_remove(fdhandler_t*  f);
 void fdhandler_prepend(fdhandler_t*  f, fdhandler_t**  list);

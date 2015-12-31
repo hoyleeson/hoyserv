@@ -28,19 +28,21 @@ struct pack_cli_msg {
 };
 
 
-struct client_control {
+struct client_peer {
+	uint32_t taskid;
 	fdhandler_t *hand;
 	uint16_t nextseq;
 	struct sockaddr_in serv_addr;
 };
 
-
+#if 0
 struct client_task {
 	uint32_t taskid;
 	fdhandler_t *hand;
 	uint16_t nextseq;
 	struct sockaddr_in serv_addr;
 };
+#endif
 
 enum client_mode {
 	MODE_SERV_TURN,
@@ -54,22 +56,37 @@ struct client {
 	event_cb callback;
 	response_wait waits;
 
-	struct client_control control;
-	struct client_task task;
+	struct client_peer control; 	/* connect with center serv, taskid is invaild */
+	struct client_peer task;
 };
 
 static struct client _client;
 
 
-static void client_send_pack(pack_head_t *pkt) 
+static void *client_pkt_alloc(struct client_peer *peer)
 {
-	struct client *cli = _client;
-	
-	int len = sizeof(pack_head_t) + pkt->datalen;
-	pkt->seqnum = cli->control.nextseq++;
-	
-	fdhandler_sendto(cli->control.hand, (const uint8_t *)pkt, len,
-		   	&cli->control.serv_addr);
+	packet_t *packet;
+
+	packet = fdhandler_pkt_alloc(peer->hand);
+
+	return packet->data + pack_head_len();
+
+}
+
+static void client_pkt_send(client_peer *peer, int type, void *data, int len)
+{
+	pack_head_t *head;
+	packet_t *packet = (packet_t *)((uint8_t *)data - pack_head_len());
+
+	/* init header */
+	head = (pack_head_t *)packet->data;
+	init_pack(head, type, len);
+	head->seqnum = peer->nextseq++;
+
+	packet->len = len + pack_head_len();
+	packet->addr = peer->serv_addr;
+
+	fdhandler_pkt_submit(peer->hand, packet);
 }
 
 
@@ -90,12 +107,12 @@ int client_login(void)
 {
 	int ret;
 	int userid;
-	pack_head_t *pack;
+	void *data;
 	struct client *cli = _client;
 
-	pack = create_pack(MSG_CLI_LOGIN, 0);
+	data = client_pkt_alloc(cli->control);
 
-	client_send_pack(pack);
+	client_pkt_send(cli->control, MSG_CLI_LOGIN, data, 0);
 
 	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, &userid);
 	if(ret)
@@ -108,25 +125,25 @@ int client_login(void)
 
 void client_logout(void)
 {
-	pack_head_t *pack;
+	uint32_t *userid;
 	struct client *cli = _client;
 
-	pack = create_pack(MSG_CLI_LOGOUT, sizeof(uint32_t));
-	*(uint32_t *)pack->data = cli->userid;
+	userid = (uint32_t *)client_pkt_alloc(cli->control);
 
-	client_send_pack(pack);
+	*userid = cli->userid;
+
+	client_pkt_send(cli->control, MSG_CLI_LOGOUT, userid, sizeof(uint32_t));
 }
 
 
 int client_create_group(int open, const char *name, const char *passwd)
 {
-	pack_head_t *pack;
 	struct client *cli = _client;
 	struct pack_creat_group *p;
 	struct pack_creat_group_result result;
 
-	pack = create_pack(MSG_CLI_CREATE_GROUP, sizeof(*p));
-	p = (struct pack_creat_group *)pack->data;
+	p = (struct pack_creat_group *)client_pkt_alloc(cli->control);
+
 	p->userid = cli->userid;
 	p->flags = 0;
 	if(open)
@@ -140,9 +157,9 @@ int client_create_group(int open, const char *name, const char *passwd)
 		strncpy(p->passwd, passwd, GROUP_PASSWD_MAX);
 	}
 
-	client_send_pack(pack);
+	client_pkt_send(cli->control, MSG_CLI_CREATE_GROUP, p, sizeof(*p));
 
-	ret = wait_for_reponse(&cli->waits, MSG_CREATE_GROUP_RESPONSE, 0, &result); /* XXX */
+	ret = wait_for_reponse(&cli->waits, MSG_CREATE_GROUP_RESPONSE, 0, &result); /* XXX seq */
 	if(ret)
 		return -EINVAL;
 
@@ -155,51 +172,46 @@ int client_create_group(int open, const char *name, const char *passwd)
 
 void client_delete_group(void)
 {
-	pack_head_t *pack;
 	struct pack_del_group *p;
 	struct client *cli = _client;
 
-	pack = create_pack(MSG_CLI_DELETE_GROUP, sizeof(*p));
-	p = (struct pack_creat_group *)pack->data;
+	p = (struct pack_del_group *)client_pkt_alloc(cli->control);
 
 	p->userid = cli->userid;
 
-	client_send_pack(pack);
+	client_pkt_send(cli->control, MSG_CLI_DELETE_GROUP, p, sizeof(*p));
 }
 
 int client_list_group(group_t *group)
 {
-	pack_head_t *pack;
-	struct pack_del_group *p;
+	struct pack_list_group *p;
 	struct client *cli = _client;
 
-	pack = create_pack(MSG_CLI_LIST_GROUP, sizeof(*p));
-	p = (struct pack_creat_group *)pack->data;
+	p = (struct pack_list_group *)client_pkt_alloc(cli->control);
 
 	p->userid = cli->userid;
 
-	client_send_pack(pack);
+	client_pkt_send(cli->control, MSG_CLI_LIST_GROUP, p, sizeof(*p));
 
 	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, &result); /* XXX */
 	if(ret)
 		return -EINVAL;
 
+	return 0;
 }
 
 
 int client_join_group(group_t *group, const char *passwd)
 {
-	pack_head_t *pack;
 	struct pack_join_group *p;
 	struct client *cli = _client;
 
-	pack = create_pack(MSG_CLI_JOIN_GROUP, sizeof(*p));
-	p = (struct pack_creat_group *)pack->data;
+	p = (struct pack_join_group *)client_pkt_alloc(cli->control);
 
 	p->userid = cli->userid;
 	p->groupid = group->groupid;
 
-	client_send_pack(pack);
+	client_pkt_send(cli->control, MSG_CLI_JOIN_GROUP, p, sizeof(*p));
 
 	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, &result); /* XXX */
 	if(ret)
@@ -215,36 +227,40 @@ int client_join_group(group_t *group, const char *passwd)
 
 void client_leave_group(void)
 {
-	pack_head_t *pack;
 	struct pack_join_group *p;
 	struct client *cli = _client;
 
-	pack = create_pack(MSG_CLI_LEAVE_GROUP, sizeof(*p));
-	p = (struct pack_creat_group *)pack->data;
+	p = (struct pack_join_group *)client_pkt_alloc(cli->control);
 
 	p->userid = cli->userid;
 
-	client_send_pack(pack);
+	client_pkt_send(cli->control, MSG_CLI_LEAVE_GROUP, p, sizeof(*p));
 }
 
 
-static pack_head_t *create_task_req_pack(struct client *cli, int type, uint32_t priv_size)
+static void *create_task_req_pack(struct client *cli, int type)
 {
-	pack_head_t *pack;
 	struct pack_task_req *p;
 
-	pack = create_pack(MSG_TASK_REQ, priv_size);
-	p = (struct pack_creat_group *)pack->data;
+	p = (struct pack_task_req *)client_pkt_alloc(cli->task);
 
 	p->taskid = cli->task.taskid;
 	p->userid = cli->userid;
 	p->type = type;
-	return pack;
+
+	return &p->data;
+}
+
+static void task_req_pack_send(struct client *cli, void *data, int size)
+{
+	struct pack_task_req *p;
+	p = (struct pack_task_req *)((uint8_t *)data - sizeof(struct pack_task_req));
+
+	client_pkt_send(cli->control, MSG_TASK_REQ, p, sizeof(*p) + size);
 }
 
 void client_send_command(void *data, int len)
 {
-	pack_head_t *pack;
 	struct pack_cli_msg *p;
 	struct client *cli = _client;
 
@@ -252,19 +268,17 @@ void client_send_command(void *data, int len)
 		return;	
 	}
 
-	pack = create_task_req_pack(cli, TASK_TURN, sizeof(*p)+len);
-	p = (struct pack_creat_group *)pack->data;
+	p = create_task_req_pack(cli, TASK_TURN);
 
 	p->type = PACK_COMMAND;
 	p->datalen = len;
 	memcpy(p->data, data, len);
 
-	client_send_pack(pack);
+	task_req_pack_send(cli, p, sizeof(*p) + len);
 }
 
 void client_send_state_img(void *data, int len)
 {
-	pack_head_t *pack;
 	struct pack_cli_msg *p;
 	struct client *cli = _client;
 
@@ -272,25 +286,26 @@ void client_send_state_img(void *data, int len)
 		return;	
 	}
 
-	pack = create_task_req_pack(cli, TASK_TURN, sizeof(*p)+len);
-	p = (struct pack_creat_group *)pack->data;
+	p = create_task_req_pack(cli, TASK_TURN);
 
 	p->type = PACK_STATE_IMG;
 	p->datalen = len;
 	memcpy(p->data, data, len);
 
-	client_send_pack(pack);
+	task_req_pack_send(cli, p, sizeof(*p) + len);
 }
 
 
-static void client_hbeat(struct group_t *group)
+static void client_hbeat(void)
 {
-	pack_head_t *pack;
-	struct pack_del_group *p;
+	uint32_t *userid;
+	struct client *cli = _client;
 
-	pack = create_pack(MSG_CLI_HBEAT, sizeof(*p));
+	userid = (uint32_t *)client_pkt_alloc(cli->control);
 
-	client_send_pack(pack);
+	*userid = cli->userid;
+
+	client_pkt_send(cli->control, MSG_CLI_HBEAT, userid, sizeof(uint32_t));
 }
 
 

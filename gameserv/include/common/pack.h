@@ -15,6 +15,8 @@ typedef struct _pack_header {
 }__attribute__((packed)) pack_head_t;
 
 
+#define pack_head_len() 	sizeof(pack_head_t)
+
 pack_head_t *create_pack(uint8_t type, uint32_t len);
 void init_pack(pack_head_t *pack, uint8_t type, uint32_t len);
 void free_pack(pack_head_t *pack);
