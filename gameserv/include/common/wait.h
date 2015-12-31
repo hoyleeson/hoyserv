@@ -1,12 +1,16 @@
 #ifndef _COMMON_WAIT_H_
 #define _COMMON_WAIT_H_
 
+#include <stdint.h>
+#include <semaphore.h>
+#include <common/hashmap.h>
+
 typedef struct _wait_obj {
 	int done;
 	sem_t sem;
 } wait_obj_t;
 
-void wait_obj_init(wait_obj_t *wait);
+int wait_obj_init(wait_obj_t *wait);
 int wait_obj_destory(wait_obj_t *wait);
 
 int wait_for_obj_timeout(wait_obj_t *wait, int ms);
@@ -14,6 +18,13 @@ int wait_for_obj(wait_obj_t *wait);
 
 int post_obj(wait_obj_t *wait);
 
+
+struct response_node {
+	int type;
+	uint64_t key;
+	void *response;
+	wait_obj_t wait;
+};
 
 typedef struct response_wait {
 	Hashmap *hash;
@@ -25,23 +36,23 @@ int wait_for_response(response_wait_t *wait, int type, int seq, void *response);
 void post_response(response_wait_t *wait, int type, int seq, void *response,
 		void (*fn)(void *, void *));
 
-#define response_post(wait, type, seq, resp) ({  \
+#define response_post(_wait, _type, _seq, _resp) ({  \
 	int ret = 0; 		\
 	do  { 				\
 		uint64_t key; 	\
 		struct response_node *expect; \
-		typeof(*resp) *dst = expect->response; \
+		typeof(*(_resp)) *dst = expect->response; \
 						\
-		key = (uint64_t)type << 32 | seq; 	\
-		expect = hashmapGet(cli->waits_map, key); \
+		key = (uint64_t)(_type)<< 32 | (_seq); 	\
+		expect = hashmapGet((_wait)->hash, &key); \
 		if(!expect) {	\
 			ret = -EINVAL; 	\
 			break; 		\
 		} 				\
-		*dst =  *response; 		\
+		*dst =  *(_resp); \
 						\
 		post_obj(&expect->wait); \
-	} while(0) 			\
+	} while(0); 		\
 	ret; 				\
 })
 

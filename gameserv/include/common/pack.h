@@ -2,6 +2,7 @@
 #define _COMMON_PACK_H_
 
 #include <stdint.h>
+#include <common/list.h>
 
 typedef struct _pack_header {
 	uint16_t magic;
@@ -21,8 +22,9 @@ pack_head_t *create_pack(uint8_t type, uint32_t len);
 void init_pack(pack_head_t *pack, uint8_t type, uint32_t len);
 void free_pack(pack_head_t *pack);
 
+typedef struct _pack_buf pack_buf_t;
 
-typedef struct _pack_buf {
+struct _pack_buf {
 	void *data;
 	int len;
 
@@ -31,7 +33,7 @@ typedef struct _pack_buf {
 	void  (*destructor)(pack_buf_t *pkb);
 	uint8_t refcount;
 	pthread_mutex_t lock;
-} pack_buf_t;
+};
 
 
 pack_buf_t *alloc_pack_buf(void);

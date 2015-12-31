@@ -1,8 +1,11 @@
 #include <stdlib.h>
 #include <semaphore.h>
 
+#include <common/wait.h>
+
 #define ms2ns(ms) ((ms)*1000*1000)
 
+#define WAIT_PACKET_TIMEOUT_MS 		(10 * 1000)
 
 int wait_obj_init(wait_obj_t *wait) 
 {
@@ -12,6 +15,7 @@ int wait_obj_init(wait_obj_t *wait)
 int wait_for_obj_timeout(wait_obj_t *wait, int ms)
 {
     struct timespec timeout;
+	struct timeval now;
 
 	gettimeofday(&now, NULL);
 	timeout.tv_sec = now.tv_sec + ms / 1000;
@@ -35,13 +39,6 @@ int wait_obj_destory(wait_obj_t *wait)
 	return sem_destroy(&wait->sem);
 }
 
-struct response_node {
-	int type;
-	uint64_t key;
-	void *response;
-	wait_obj_t wait;
-};
-
 static int int64_hash(void *key)
 {
 	return hashmapHash(key, sizeof(uint64_t));
@@ -57,7 +54,7 @@ static bool int64_equals(void* keyA, void* keyB)
 
 int response_wait_init(response_wait_t *wait, int capacity)
 {
-	wait->waits_map = hashmapCreate(capacity, int64_hash, int64_equals);
+	wait->hash = hashmapCreate(capacity, int64_hash, int64_equals);
 	return 0;
 }
 
@@ -71,10 +68,10 @@ int wait_for_response(response_wait_t *wait, int type, int seq, void *response)
 	expect.response = response;
 	wait_obj_init(&expect.wait);
 
-	hashmapPut(cli->waits_map, type, &expect);
+	hashmapPut(wait->hash, &expect.key, &expect);
 	ret = wait_for_obj_timeout(&expect.wait, WAIT_PACKET_TIMEOUT_MS);
 	
-	hashmapRemove(cli->waits_map, type);
+	hashmapRemove(wait->hash, &expect.key);
 	return ret;
 }
 
@@ -86,7 +83,7 @@ void post_response(response_wait_t *wait, int type, int seq, void *response,
 	struct response_node *expect;
 
 	key = (uint64_t)type << 32 | seq;
-	expect = hashmapGet(cli->waits_map, key);
+	expect = hashmapGet(wait->hash, &key);
 	if(!expect)
 		return;
 

@@ -18,15 +18,18 @@ enum client_mode {
 typedef int (*event_cb)(int event, void *arg1, void *arg2);
 
 int client_login(void);
-void client_create_group(int open, const char *name, const char *passwd);
+int client_create_group(int open, const char *name, const char *passwd);
 void client_delete_group(void);
 
 int client_list_group(group_t *group);
-void client_join_group(group_t *group, const char *passwd);
+int client_join_group(group_t *group, const char *passwd);
 void client_leave_group(void);
 
-int client_init(const char *host);
+void client_send_command(void *data, int len);
+void client_send_state_img(void *data, int len);
 
+int client_init(const char *host, int mode, event_cb callback);
+int client_task_start(const char *host, int port, uint32_t userid, uint32_t groupid);
 
 enum {
 	EVENT_NONE,

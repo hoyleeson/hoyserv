@@ -79,6 +79,7 @@ static void login_result_response(cli_mgr_t *cm,
 static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
 {
 	user_info_t *uinfo;
+	struct sockaddr_in *addr = from;
 
 	uinfo = malloc(sizeof(*uinfo));
 	if(!uinfo)
@@ -93,6 +94,7 @@ static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
 	cm->user_count++;
 	hashmapPut(cm->user_map, &uinfo->userid, uinfo);
 
+	logi("user login. from %s, %d.\n", inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
 	login_result_response(cm, uinfo, from);
 	return 0;
 }

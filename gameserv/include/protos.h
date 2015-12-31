@@ -1,15 +1,16 @@
 #ifndef _TURN_PROTOS_H_
 #define _TURN_PROTOS_H_
 
+#include <sys/socket.h>
 #include <stdint.h>
 
 #define SERV_MAGIC 			(0x2016)	
 #define SERV_VERSION 		(1)
 
-#define CENTER_SERV_CLI_PORT 	(8123)
+#define CLIENT_LOGIN_PORT 	(8123) 	 /* listen by center server. */
 
-#define CLI_CONTROL_LISTEN_PORT 	(8124)
-//#define CLI_TASK_LISTEN_PORT 		(8125)
+#define CLIENT_TASK_PORT 	(8124) 	 /* XXX: listen by client */
+
 
 #define INVAILD_USERID 		(~0L)
 #define INVAILD_GROUPID 	(~0L)
@@ -43,12 +44,17 @@ enum center_cli_msg_type {
 enum {
 	MSG_TASK_REQ,
 	MSG_TURN_PACK,
+	MSG_P2P_PACK,
 };
 
 /* client A <----------> client B */
 enum client_msg_type {
 	PACK_COMMAND = 1,
 	PACK_STATE_IMG,
+};
+
+enum task_type {
+	TASK_TURN,
 };
 
 

@@ -76,6 +76,7 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 	ta->groupid = group->groupid;
 	ta->cli_count = group->users;
 
+	/* Usually, Only creater. */
 	list_for_each_entry(user, &group->userlist) {
 		if(i >= ta->cli_count)
 			fatal("group count bug.\n");
@@ -206,6 +207,7 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 {
 	void *data;
 	struct turn_task *ttask;
+	struct sockaddr_in addr;
 	int len;
 
 	ttask = &task->priv_data;
@@ -216,8 +218,9 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 	for(i=0; i<ta->cli_count; i++) {
 		if(pack->userid == ttask->userid)
 			continue;
-
-		task_worker_pkt_sendto(task, MSG_TURN_PACK, data, pack->datalen, ttask->tuple[i].addr);
+		addr = ttask->tuple[i].addr;
+		addr.sin_port = htons(port);
+		task_worker_pkt_sendto(task, MSG_TURN_PACK, data, pack->datalen, &addr);
 	}
 
 	return 0;

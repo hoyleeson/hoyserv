@@ -1,7 +1,7 @@
 #ifndef _SERV_PROTOS_INTERNAL_H_
 #define _SERV_PROTOS_INTERNAL_H_
 
-#define CENTER_SERV_NODE_PORT 	(9123)
+#define NODE_SERV_LOGIN_PORT 	(9123) 	/* listen by center server. */
 
 
 /* node server ------> center server */

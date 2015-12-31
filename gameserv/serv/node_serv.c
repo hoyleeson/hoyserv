@@ -168,7 +168,7 @@ static task_worker_t *create_task_worker(node_serv_t *ns)
 	memset(&addr, 0, sizeof(addr));
 
 	if (getsockname(sock, (struct sockaddr*)&addr, &addrlen) < 0) {
-		close(m_sock);
+		close(sock);
 		return NULL;
 	}
 
@@ -410,7 +410,7 @@ int node_serv_init(const char *host)
 	int socket;
 	node_serv_t *ns = &node_serv;
 
-	socket = socket_network_client(host, CENTER_SERV_NODE_PORT, SOCK_STREAM);
+	socket = socket_network_client(host, NODE_SERV_LOGIN_PORT, SOCK_STREAM);
 
 	ns->mgr_hand = fdhandler_create(socket, node_serv_handle, node_serv_close, ns);
 	ns->task_count = 0;

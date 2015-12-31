@@ -1,12 +1,13 @@
 #include <stdlib.h>
 
 #include <common/pack.h>
+#include <protos.h>
 
 
 pack_head_t *create_pack(uint8_t type, uint32_t len)
 {
 	pack_head_t *pack;
-	pack = (pack_head_t *)malloc(sizeof(*pack) + size);	
+	pack = (pack_head_t *)malloc(sizeof(*pack) + len);	
 	if(!pack)
 		return NULL;
 
@@ -57,11 +58,11 @@ pack_buf_t *alloc_pack_buf(void)
 	return pkb;
 }
 
-void pack_buf_fill(void *data, int len, void  (*destructor)(pack_buf_t *pkb))
+void pack_buf_fill(pack_buf_t *pkb, void *data, int len, void  (*destructor)(pack_buf_t *pkb))
 {
 	pkb->destructor = destructor;
-	pkb->len = data;
-	pkb->data = len;
+	pkb->data = data;
+	pkb->len = len;
 }
 
 
