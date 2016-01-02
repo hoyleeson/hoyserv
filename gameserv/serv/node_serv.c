@@ -24,27 +24,6 @@
 struct _node_serv;
 typedef struct _node_serv  node_serv_t;
 
-typedef struct _task_worker {
-	fdhandler_t *hand;
-	int nextseq;
-	struct sockaddr addr;
-
-	int task_count;
-	struct Hashmap *tasks_map; 	/*key: task id*/
-
-	node_serv_t *owner;
-	struct listnode node;
-} task_worker_t;
-
-
-struct task {
-	int taskid;
-	int type;
-	int priority;
-	task_worker_t *worker;
-	uint8_t priv_data[0];
-	struct task_operations *ops;
-};
 
 /* ns: node server */
 
@@ -57,6 +36,20 @@ struct _node_serv {
 	int task_count;
 	task_worker_t *suit_worker;
 };
+
+struct _task_worker {
+	fdhandler_t *hand;
+	int nextseq;
+	struct sockaddr addr;
+
+	int task_count;
+	struct Hashmap *tasks_map; 	/*key: task id*/
+
+	node_serv_t *owner;
+	struct listnode node;
+};
+
+
 
 static node_serv_t node_serv;
 

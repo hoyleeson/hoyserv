@@ -1,8 +1,20 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <stddef.h>
+#include <pthread.h>
+#include <errno.h>
+
+#include <common/log.h>
+#include <common/pack.h>
+#include <common/wait.h>
+#include <arpa/inet.h>
 
 #include <protos.h>
 #include "turn.h"
 #include "protos_internal.h"
+#include "cli_mgr.h"
 
 struct turn_assign_data {
 	task_baseinfo_t base;
@@ -19,7 +31,7 @@ struct turn_control_data {
 unsigned long turn_task_assign(node_mgr_t *mgr, group_info_t *group)
 {
 	task_handle_t *task;
-	turn_assign_data data;
+	struct turn_assign_data data;
 
 	init_taskbase_info(&data.base);
 	data.group = group;
@@ -36,7 +48,7 @@ int turn_task_reclaim(node_mgr_t *mgr, unsigned long handle)
 
 int turn_task_control(node_mgr_t *mgr, unsigned long handle, int opt, user_info_t *user)
 {
-	turn_control_data data;
+	struct turn_control_data data;
 
 	data.user = user;
 	return nodemgr_task_control(mgr, (task_handle_t *)handle, opt, &data.base);
@@ -59,7 +71,7 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 	int len;
 	struct pack_turn_assign *ta;
 	struct user_info_t *user;
-	struct turn_assign_data *turn = (struct turn_assign_data *)data;
+	struct turn_assign_data *turn = (struct turn_assign_data *)base;
 	group_info_t *group = turn->group;
 
 	if(!group)
@@ -72,7 +84,7 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 	ta->cli_count = group->users;
 
 	/* Usually, Only creater. */
-	list_for_each_entry(user, &group->userlist) {
+	list_for_each_entry(user, &group->userlist, node) {
 		if(i >= ta->cli_count)
 			fatal("group count bug.\n");
 
@@ -131,7 +143,7 @@ static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
 	ta = (struct pack_turn_assign *)pkt;
 
 	task = create_task(sizeof(*ttask));
-	ttask = &task->priv_data;
+	ttask = (struct turn_task *)&task->priv_data;
 	ttask->groupid = ta->groupid;
 	ttask->cli_count = ta->cli_count;
 
@@ -155,11 +167,12 @@ static int turn_task_reclaim_handle(task_t *task, struct pack_task_reclaim *pkt)
 
 static int turn_task_control_handle(task_t *task, int opt, struct pack_task_control *pkt)
 {
+	int i;
 	struct pack_turn_control *tc;
 	struct turn_task *ttask;
 
 	tc = (struct pack_turn_control *)pkt;
-	ttask = (struct turn_task *)task->priv_data;
+	ttask = (struct turn_task *)&task->priv_data;
 
 	switch(opt) {
 		case TURN_TYPE_USER_JOIN:
@@ -170,7 +183,7 @@ static int turn_task_control_handle(task_t *task, int opt, struct pack_task_cont
 			break;
 		case TURN_TYPE_USER_LEAVE:
 			for(i=0; i<ttask->cli_count; i++) {
-				if(ttask->tuple[i].userid == tc->tuple[0].userid) {
+				if(ttask->tuple[i].userid == tc->tuple.userid) {
 					ttask->tuple[i] = ttask->tuple[--ttask->cli_count];
 					break;
 				}
@@ -199,21 +212,22 @@ int init_turn_task_assign_response(task_t *task, struct pack_task_base *pkt)
 
 static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 {
+	int i;
 	void *data;
 	struct turn_task *ttask;
 	struct sockaddr_in addr;
-	int len;
 
-	ttask = &task->priv_data;
+	ttask = (struct turn_task *)&task->priv_data;
 
 	data = task_worker_pkt_alloc(task); /* XXX */
 	memcpy(data, pack->data, pack->datalen);
 
-	for(i=0; i<ta->cli_count; i++) {
-		if(pack->userid == ttask->userid)
+	for(i=0; i<ttask->cli_count; i++) {
+		if(pack->userid == ttask->tuple[i].userid)
 			continue;
-		addr = ttask->tuple[i].addr;
-		addr.sin_port = htons(port);
+
+		addr = *((struct sockaddr_in *)&(ttask->tuple[i].addr));
+		addr.sin_port = htons(CLIENT_TASK_PORT); /* XXX */
 		task_worker_pkt_sendto(task, MSG_TURN_PACK, data, pack->datalen, &addr);
 	}
 

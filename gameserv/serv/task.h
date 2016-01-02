@@ -10,8 +10,18 @@ typedef struct _task_baseinfo {
 	uint8_t data[0];
 } task_baseinfo_t;
 
-struct task;
-typedef struct task task_t;
+typedef struct _task_worker task_worker_t;
+
+typedef struct task {
+	int taskid;
+	int type;
+	int priority;
+	task_worker_t *worker;
+	struct task_operations *ops;
+	uint8_t priv_data[0];
+} task_t;
+
+
 
 static inline void init_taskbase_info(task_baseinfo_t *info)
 {
