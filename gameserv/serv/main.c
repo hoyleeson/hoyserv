@@ -3,6 +3,7 @@
 #include <getopt.h>
 
 #include <protos.h>
+#include <common/log.h>
 
 #define SERV_MODE_CENTER_SERV  	(1 << 0)
 #define SERV_MODE_NODE_SERV 	 	(1 << 1)
@@ -52,7 +53,7 @@ int main(int argc, char **argv)
 				mode = serv_mode_parse(optarg);
 				break;
 			case 'v':
-				info("compilation date: %s,time: %s, version: %d\n", 
+				logi("compilation date: %s,time: %s, version: %d\n", 
 						__DATE__, __TIME__, SERV_VERSION);
 				return 0;
 			case 'h':

@@ -2,6 +2,7 @@
 
 #include <common/pack.h>
 #include <protos.h>
+#include <common/log.h>
 
 
 pack_head_t *create_pack(uint8_t type, uint32_t len)

@@ -60,6 +60,11 @@ static int cli_mgr_send_pack(cli_mgr_t *cm, pack_head_t *pkt, void *to)
 	return 0;
 }
 
+static void cli_mgr_send_ack(cli_mgr_t *cm, pack_head_t *head)
+{
+
+}
+
 static inline int cli_mgr_alloc_uid(cli_mgr_t *cm)
 {
 	return cm->uid_pool++;
@@ -119,7 +124,7 @@ static int cmd_logout_handle(cli_mgr_t *cm, uint32_t uid)
 	cm->user_count--;
 
 	if(uinfo->group != NULL) {
-		exit_from_group(); /* XXX */
+		//exit_from_group(); /* XXX */
 	}
 
 	free(uinfo);

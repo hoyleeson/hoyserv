@@ -22,6 +22,7 @@ struct _node_info {
 };
 
 struct _node_mgr {
+	int taskids;
 	int node_count;
 	fdhandler_t *hand;
 	struct listnode nodelist;
@@ -40,6 +41,10 @@ typedef struct _task_handle {
 
 
 node_mgr_t *node_mgr_init(void);
+task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority, task_baseinfo_t *base);
+int nodemgr_task_reclaim(node_mgr_t *mgr, task_handle_t *task, task_baseinfo_t *base);
+int nodemgr_task_control(node_mgr_t *mgr, task_handle_t *task, int opt, task_baseinfo_t *base);
+
 
 #endif
 

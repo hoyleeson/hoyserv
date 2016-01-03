@@ -130,6 +130,10 @@ static int init_task_assign_pkt(task_handle_t *task, task_baseinfo_t *base,
 	return default_init_assign_pkt(base, pkt);
 }
 
+static uint32_t alloc_taskid(node_mgr_t *mgr)
+{
+	return ++mgr->taskids;
+}
 
 task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 		task_baseinfo_t *base)

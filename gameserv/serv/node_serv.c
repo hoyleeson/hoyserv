@@ -50,7 +50,6 @@ struct _task_worker {
 };
 
 
-
 static node_serv_t node_serv;
 
 
@@ -68,7 +67,7 @@ void release_task(task_t *task)
 }
 
 
-task_t *find_node_serv_task(node_serv_t *ns, int taskid)
+static task_t *find_node_serv_task(node_serv_t *ns, int taskid)
 {
 	task_t *task;
 	task_worker_t *worker;
@@ -242,7 +241,7 @@ static task_t *node_serv_task_assign(struct pack_task_assign *pt)
 
 	ops = find_task_protos_by_type(pt->type);
 	if(!ops)
-		return -EINVAL;
+		return NULL;
 
 	task = ops->assign_handle(pt);
 

@@ -14,6 +14,7 @@
 #include <protos.h>
 #include "turn.h"
 #include "protos_internal.h"
+#include "node_mgr.h"
 #include "cli_mgr.h"
 
 struct turn_assign_data {
@@ -54,7 +55,7 @@ int turn_task_control(node_mgr_t *mgr, unsigned long handle, int opt, user_info_
 	return nodemgr_task_control(mgr, (task_handle_t *)handle, opt, &data.base);
 }
 
-int get_turn_info(node_mgr_t *mgr, unsigned int handle, struct turn_info *info)
+int get_turn_info(node_mgr_t *mgr, unsigned long handle, struct turn_info *info)
 {
 	task_handle_t *task = (task_handle_t *)handle;
 
@@ -69,8 +70,8 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 {
 	int i = 0;
 	int len;
+	user_info_t *user;
 	struct pack_turn_assign *ta;
-	struct user_info_t *user;
 	struct turn_assign_data *turn = (struct turn_assign_data *)base;
 	group_info_t *group = turn->group;
 
@@ -78,7 +79,7 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 		return;
 
 	ta = (struct pack_turn_assign *)pkt;
-	len = sizeof(*ta) + sizeof(client_tuple_t)*turn->cli_count;
+	len = sizeof(*ta) + sizeof(client_tuple_t)*ta->cli_count;
 
 	ta->groupid = group->groupid;
 	ta->cli_count = group->users;
@@ -88,8 +89,8 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 		if(i >= ta->cli_count)
 			fatal("group count bug.\n");
 
-		tuple[i].userid = user->userid;
-		tuple[i].addr = user->addr;
+		ta->tuple[i].userid = user->userid;
+		ta->tuple[i].addr = user->addr;
 		i++;
 	}
 
@@ -97,7 +98,7 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 }
 
 
-static void init_turn_task_reclaim(task_baseinfo_t *base, 
+static int init_turn_task_reclaim(task_baseinfo_t *base, 
 		struct pack_task_reclaim *pkt)
 {
 	int len;
@@ -107,13 +108,13 @@ static void init_turn_task_reclaim(task_baseinfo_t *base,
 }
 
 
-static void init_turn_task_control(task_baseinfo_t *base,
+static int init_turn_task_control(task_baseinfo_t *base,
 	   	struct pack_task_control *pkt)
 {
 	int i = 0;
 	int len;
+	user_info_t *user;
 	struct pack_turn_control *tc;
-	struct user_info_t *user;
 	struct turn_control_data *data = (struct turn_control_data *)base;
 
 	user = data->user;
@@ -179,7 +180,7 @@ static int turn_task_control_handle(task_t *task, int opt, struct pack_task_cont
 			if(ttask->cli_count >= GROUP_MAX_USER)
 				return -EINVAL;
 
-			ttask->tuple[ttask->cli_count++] = tc->tuple[0];
+			ttask->tuple[ttask->cli_count++] = tc->tuple;
 			break;
 		case TURN_TYPE_USER_LEAVE:
 			for(i=0; i<ttask->cli_count; i++) {
