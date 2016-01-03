@@ -239,17 +239,17 @@ struct group_list_tmp {
 
 static bool hash_entry_cb(void* key, void* value, void* context)
 {
-	group_t *group;
+	group_desc_t *group;
 	group_info_t *ginfo = (group_info_t *)value;
 	struct group_list_tmp *rtmp = (struct group_list_tmp *)context;
 
-	group = (group_t *)(rtmp->data + rtmp->index);
+	group = (group_desc_t *)(rtmp->data + rtmp->index);
 	group->groupid = ginfo->groupid;
 	group->flags = ginfo->flags;
 	group->namelen = strlen(ginfo->name);
 
 	strncpy(group->name, ginfo->name, GROUP_NAME_MAX);
-	rtmp->index += (sizeof(group_t) + group->namelen);
+	rtmp->index += (sizeof(group_desc_t) + group->namelen);
 	rtmp->count++;
 	
 	return true;

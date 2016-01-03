@@ -1,6 +1,7 @@
 
 SUBDIRS = common
 
-protosincludedir=$(includedir)
-protosinclude_HEADERS=$(top_srcdir)/include/protos.h
+noinst_HEADERS = protos.h
+#protosincludedir=$(includedir)
+#protosinclude_HEADERS=protos.h
 

@@ -1,6 +1,8 @@
 #ifndef _TURN_CLIENT_H_
 #define _TURN_CLIENT_H_
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -9,6 +11,13 @@ enum client_mode {
 	CLI_MODE_CONTROL_ONLY,
 	CLI_MODE_TASK_ONLY,
 	CLI_MODE_FULL_FUNCTION,
+};
+
+struct group_description {
+	uint32_t groupid;
+	uint16_t flags;
+	uint32_t namelen;
+	char name[0];
 };
 
 /* event callback routine.
@@ -21,8 +30,8 @@ int client_login(void);
 int client_create_group(int open, const char *name, const char *passwd);
 void client_delete_group(void);
 
-int client_list_group(group_t *group);
-int client_join_group(group_t *group, const char *passwd);
+int client_list_group(struct group_description *group);
+int client_join_group(struct group_description *group, const char *passwd);
 void client_leave_group(void);
 
 void client_send_command(void *data, int len);

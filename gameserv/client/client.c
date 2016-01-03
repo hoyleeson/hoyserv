@@ -15,7 +15,6 @@
 #include <common/wait.h>
 #include <common/pack.h>
 #include <common/sockets.h>
-#include <common/hashmap.h>
 #include <common/log.h>
 
 #include "client.h"
@@ -109,7 +108,7 @@ int client_login(void)
 
 	client_pkt_send(&cli->control, MSG_CLI_LOGIN, data, 0);
 
-	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, &userid);
+	ret = wait_for_response(&cli->waits, MSG_LOGIN_RESPONSE, 0, &userid);
 	if(ret)
 		return -EINVAL;
 
@@ -155,7 +154,7 @@ int client_create_group(int open, const char *name, const char *passwd)
 
 	client_pkt_send(&cli->control, MSG_CLI_CREATE_GROUP, p, sizeof(*p));
 
-	ret = wait_for_reponse(&cli->waits, MSG_CREATE_GROUP_RESPONSE, 0, &result); /* XXX seq */
+	ret = wait_for_response(&cli->waits, MSG_CREATE_GROUP_RESPONSE, 0, &result); /* XXX seq */
 	if(ret)
 		return -EINVAL;
 
@@ -178,7 +177,7 @@ void client_delete_group(void)
 	client_pkt_send(&cli->control, MSG_CLI_DELETE_GROUP, p, sizeof(*p));
 }
 
-int client_list_group(group_t *group)
+int client_list_group(struct group_description *group)
 {
 	int ret;
 	struct pack_list_group *p;
@@ -190,7 +189,7 @@ int client_list_group(group_t *group)
 
 	client_pkt_send(&cli->control, MSG_CLI_LIST_GROUP, p, sizeof(*p));
 
-	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, NULL); /* XXX */
+	ret = wait_for_response(&cli->waits, MSG_LOGIN_RESPONSE, 0, NULL); /* XXX */
 	if(ret)
 		return -EINVAL;
 
@@ -198,7 +197,7 @@ int client_list_group(group_t *group)
 }
 
 
-int client_join_group(group_t *group, const char *passwd)
+int client_join_group(struct group_description *group, const char *passwd)
 {
 	int ret;
 	struct pack_join_group *p;
@@ -212,7 +211,7 @@ int client_join_group(group_t *group, const char *passwd)
 
 	client_pkt_send(&cli->control, MSG_CLI_JOIN_GROUP, p, sizeof(*p));
 
-	ret = wait_for_reponse(&cli->waits, MSG_LOGIN_RESPONSE, 0, &result); /* XXX */
+	ret = wait_for_response(&cli->waits, MSG_LOGIN_RESPONSE, 0, &result); /* XXX */
 	if(ret)
 		return -EINVAL;
 

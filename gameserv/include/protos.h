@@ -107,18 +107,17 @@ struct pack_task_req {
 	uint8_t data[0];
 };
 
-typedef struct _user {
+typedef struct _user_description {
+	uint32_t userid;
+} user_desc_t;
 
-} user_t;
 
-
-typedef struct _group {
+typedef struct _group_description {
 	uint32_t groupid;
 	uint16_t flags;
 	uint32_t namelen;
 	char name[0];
-} group_t;
-
+} group_desc_t;
 
 
 #endif
