@@ -1,6 +1,8 @@
 #ifndef _COMMON_LOG_H_
 #define _COMMON_LOG_H_
 
+#include <stdint.h>
+
 #ifdef ANDROID
 
 #ifndef LOG_TAG
@@ -34,6 +36,21 @@
 #endif
 
 #define fatal(...) 	do { loge(__VA_ARGS__); exit(-1); } while(0)
+
+static inline void dump_data(const char *desc, void *data, int len) 
+{
+	int i;
+	uint8_t *p = (uint8_t *)data;
+
+	logd("(%s) dump data:\n", desc);
+	for(i=0; i<len; i++) {
+		if((i % 16) == 0)
+			logd("\n");
+		logd("%02x ", *(p + i));
+	}
+
+	logd("\n");
+}
 
 
 #endif

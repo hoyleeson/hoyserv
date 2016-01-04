@@ -10,6 +10,8 @@
 #define SERV_MODE_FULL_FUNC 		(SERV_MODE_CENTER_SERV | SERV_MODE_NODE_SERV)
 #define SERV_MODE_UNKNOWN  			(0)
 
+#define LOCAL_HOST 	"127.0.0.1"
+
 struct {
 	char *keystr;
 	int mode;
@@ -23,6 +25,7 @@ struct {
 
 static const struct option longopts[] = {
 	{"mode", required_argument, 0, 'm'},
+	{"server", required_argument, 0, 's'},
 	{"version", 0, 0, 'v'},
 	{"help", 0, 0, 'h'},
 	{0, 0, 0, 0}
@@ -35,7 +38,7 @@ static int serv_mode_parse(const char *m)
 	int mode;
 
 	for(i=0; i<ARRAY_SIZE(mode_maps); i++) {
-		if(strcmp(mode_maps[i].keystr, m))	
+		if(!strcmp(mode_maps[i].keystr, m))	
 			return mode_maps[i].mode;
 	}
 
@@ -46,11 +49,15 @@ int main(int argc, char **argv)
 {
 	int opt;
 	int mode = SERV_MODE_FULL_FUNC;
+	char *chost = LOCAL_HOST;
 
-	while((opt = getopt_long(argc, argv, "m:vh", longopts, NULL)) > 0) {
+	while((opt = getopt_long(argc, argv, "m:s:vh", longopts, NULL)) > 0) {
 		switch(opt) {
 			case 'm':
 				mode = serv_mode_parse(optarg);
+				break;
+			case 's':
+				chost = optarg;
 				break;
 			case 'v':
 				logi("compilation date: %s,time: %s, version: %d\n", 
@@ -62,13 +69,16 @@ int main(int argc, char **argv)
 		}
 	}
 
+	logi("server running. mode=%d\n", mode);
 	iohandler_init();
 
-	if(mode & SERV_MODE_CENTER_SERV)
+	if(mode & SERV_MODE_CENTER_SERV) {
+		chost = LOCAL_HOST;
 		center_serv_init();
+	}
 
 	if(mode & SERV_MODE_NODE_SERV)
-		node_serv_init();
+		node_serv_init(chost);
 
 	iohandler_loop();
 	return 0;

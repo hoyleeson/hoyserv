@@ -82,11 +82,13 @@ static void *client_pkt_alloc(struct client_peer *peer)
 
 static void client_pkt_send(struct client_peer *peer, int type, void *data, int len)
 {
+	packet_t *packet;
 	pack_head_t *head;
-	packet_t *packet = (packet_t *)((uint8_t *)data - pack_head_len());
+
+	head = (pack_head_t *)((uint8_t *)data - pack_head_len());
+	packet = data_to_packet(head);
 
 	/* init header */
-	head = (pack_head_t *)packet->data;
 	init_pack(head, type, len);
 	head->seqnum = peer->nextseq++;
 
@@ -113,6 +115,7 @@ int client_login(void)
 		return -EINVAL;
 
 	cli->userid = userid;
+	logd("client login success, userid:%u.\n", userid);
 
 	return 0;
 }
@@ -181,21 +184,44 @@ void client_delete_group(void)
 	client_pkt_send(&cli->control, MSG_CLI_DELETE_GROUP, p, sizeof(*p));
 }
 
-int client_list_group(struct group_description *group)
+int client_list_group(int pos, int count, struct group_description *gres, int *rescount)
 {
+#define RESULT_MAX_LEN 	 	(4000)
 	int ret;
+	char result[RESULT_MAX_LEN];
 	struct pack_list_group *p;
+	group_desc_t *gdesc;
+	int retlen, ofs = 0;
+	struct group_description *gp = gres;
 	struct client *cli = &_client;
 
 	p = (struct pack_list_group *)client_pkt_alloc(&cli->control);
 
 	p->userid = cli->userid;
+	p->pos = pos;
+	p->count = count;
 
 	client_pkt_send(&cli->control, MSG_CLI_LIST_GROUP, p, sizeof(*p));
 
-	ret = wait_for_response(&cli->waits, MSG_LOGIN_RESPONSE, 0, NULL); /* XXX */
+	ret = wait_for_response_data(&cli->waits, MSG_LOGIN_RESPONSE, 0, 
+			result, &retlen); /* XXX */
 	if(ret)
 		return -EINVAL;
+
+	*rescount = 0;
+	/* XXX: current version: group_desc_t equals struct group_description */
+	while(ofs < retlen) {
+		gdesc = (group_desc_t *)result + ofs;
+
+		gp->groupid = gdesc->groupid;
+		gp->flags = gdesc->flags;
+		memcpy(gp->name, gdesc->name, gdesc->namelen);
+		gp->name[gdesc->namelen] = '\0';
+
+		gp++;
+		ofs += sizeof(group_desc_t) + gdesc->namelen;
+		(*rescount)++;
+	}
 
 	return 0;
 }
@@ -322,11 +348,17 @@ static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 	void *payload;
 	struct sockaddr *cliaddr = from;
 
+	logd("client receive pack. len:%d\n", len);
+
 	if(data == NULL || len < sizeof(*head))
 		return;
 
+	dump_data("client receive data", data, len);
+
 	head = (pack_head_t *)data;
 	payload = head + 1; 
+
+	logd("pack: type:%d, seq:%d, datalen:%d\n", head->type, head->seqnum, head->datalen);
 
 	if(head->magic != SERV_MAGIC ||
 		   	head->version != SERV_VERSION)
@@ -356,6 +388,7 @@ static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 		}
 		case MSG_LIST_GROUP_RESPONSE:
 		{
+			post_response_data(&cli->waits, head->type, 0, payload, head->datalen);
 			break;
 		}
 		case MSG_GROUP_DELETE:
@@ -503,10 +536,6 @@ int client_init(const char *host, int mode, event_cb callback)
 	cli->mode = mode;
 	cli->running = 1;
 
-	ret = pthread_create(&th, NULL, client_thread_handle, cli);
-	if(ret)
-		return ret;
-
 /*	if(mode == CLI_MODE_CONTROL_ONLY || mode == CLI_MODE_TASK_ONLY) { */
 	/* dynamic alloc port by system. */
 	sock = socket_inaddr_any_server(0, SOCK_DGRAM);
@@ -532,6 +561,11 @@ int client_init(const char *host, int mode, event_cb callback)
 	cli->control.hand = fdhandler_udp_create(sock,
 			cli_msg_handle, cli_msg_close, cli);
 /*	} */
+
+	ret = pthread_create(&th, NULL, client_thread_handle, cli);
+	if(ret)
+		return ret;
+
 	return 0;
 }
 

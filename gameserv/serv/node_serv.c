@@ -13,6 +13,7 @@
 #include <common/list.h>
 #include <common/wait.h>
 #include <common/sockets.h>
+#include <common/log.h>
 #include <common/pack.h>
 
 #include "task.h"
@@ -97,12 +98,13 @@ void *task_worker_pkt_alloc(task_t *task)
 void task_worker_pkt_sendto(task_t *task, int type, 
 		void *data, int len, struct sockaddr *to)
 {
+	packet_t *packet;
 	pack_head_t *head;
 	task_worker_t *worker = task->worker;
 
-	packet_t *packet = (packet_t *)((uint8_t *)data - pack_head_len());
+	head = (pack_head_t *)((uint8_t *)data - pack_head_len());
+	packet = data_to_packet(head);
 
-	head = (pack_head_t *)packet->data;
 	init_pack(head, type, len);
 	head->seqnum = worker->nextseq++;
 
@@ -220,11 +222,12 @@ static void *node_serv_pkt_alloc(node_serv_t *ns)
 
 static void node_serv_pkt_send(node_serv_t *ns, int type, void *data, int len)
 {
+	packet_t *packet;
 	pack_head_t *head;
 
-	packet_t *packet = (packet_t *)((uint8_t *)data - pack_head_len());
+	head = (pack_head_t *)((uint8_t *)data - pack_head_len());
+	packet = data_to_packet(head);
 
-	head = (pack_head_t *)packet->data;
 	init_pack(head, type, len);
 	head->seqnum = ns->nextseq++;
 
@@ -425,7 +428,12 @@ int node_serv_init(const char *host)
 	int socket;
 	node_serv_t *ns = &node_serv;
 
+	logi("node server start. host:%s\n", host);
 	socket = socket_network_client(host, NODE_SERV_LOGIN_PORT, SOCK_STREAM);
+	if(socket < 0) {
+		loge("connect to server fail.\n");
+		return -EINVAL;
+	}
 
 	ns->mgr_hand = fdhandler_create(socket, node_serv_handle, node_serv_close, ns);
 	ns->task_count = 0;

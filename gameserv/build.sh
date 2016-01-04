@@ -17,3 +17,7 @@ fi
 make
 make install
 
+#compile samples.
+cd ./samples
+make clean
+make

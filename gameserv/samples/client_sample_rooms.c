@@ -142,9 +142,16 @@ static int delete_group(int argc, char **argv)
 
 static int list_group(int argc, char **argv)
 {
+	int res = 0;
+	int i;
 	struct group_description group[50];
 
-	client_list_group(&group);
+	client_list_group(0, 20, group, &res);
+	printf("room infomation:\n");
+
+	for(i=0; i<res; i++) {
+		printf("room id:%d, room name:%s, flags:%d.\n", group->groupid, group->name, group->flags);
+	}
 	return 0;
 }
 
@@ -198,7 +205,6 @@ int main(int argc, char **argv)
 	char buf[1024];
 	char host[32] = {0};
 	char* cmd_argv[CFG_MAXARGS];
-	struct group_description group[50];
 
 	if(argc < 2) {
 		sprintf(host, "%s", DEFAULT_IP);
@@ -206,10 +212,24 @@ int main(int argc, char **argv)
 
 	client_init(host, CLI_MODE_CONTROL_ONLY, cli_callback);
 
-	client_login();
+	ret = client_login();
+	if(ret) {
+		printf("login fail. exit.\n");
+		exit(-1);
+	}
 
-	client_list_group(group);
+	{
+		int res = 0;
+		int i;
+		struct group_description group[50];
 
+		client_list_group(0, 20, group, &res);
+		printf("room infomation:\n");
+
+		for(i=0; i<res; i++) {
+			printf("room id:%d, room name:%s, flags:%d.\n", group->groupid, group->name, group->flags);
+		}
+	}
 
 	while(fgets(buf, sizeof(buf), stdin)) {
 		int i;

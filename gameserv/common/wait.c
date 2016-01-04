@@ -58,7 +58,9 @@ int response_wait_init(response_wait_t *wait, int capacity)
 	return 0;
 }
 
-int wait_for_response(response_wait_t *wait, int type, int seq, void *response)
+
+int wait_for_response_data(response_wait_t *wait, int type, int seq,
+	   	void *response, int *count)
 {
 	int ret;
 	struct response_node expect;
@@ -66,13 +68,45 @@ int wait_for_response(response_wait_t *wait, int type, int seq, void *response)
 	expect.type = type;
 	expect.key = (uint64_t)type << 32 | seq;
 	expect.response = response;
+	expect.count = (count) ? *count : 0;
+
 	wait_obj_init(&expect.wait);
 
 	hashmapPut(wait->hash, &expect.key, &expect);
 	ret = wait_for_obj_timeout(&expect.wait, WAIT_PACKET_TIMEOUT_MS);
 	
+	if(count != NULL)
+		*count = expect.count;
+
 	hashmapRemove(wait->hash, &expect.key);
 	return ret;
+}
+
+
+void post_response_data(response_wait_t *wait, int type, int seq, 
+		void *response, int count)
+{
+	uint64_t key;
+	struct response_node *expect;
+
+	key = (uint64_t)type << 32 | seq;
+	expect = hashmapGet(wait->hash, &key);
+	if(!expect)
+		return;
+
+	if((expect->count == 0) && 
+			(expect->count != 0 && expect->count > count))
+		expect->count = count;
+
+	memcpy(expect->response, response, expect->count);
+
+	post_obj(&expect->wait);
+}
+
+
+int wait_for_response(response_wait_t *wait, int type, int seq, void *response)
+{
+	return wait_for_response_data(wait, type, seq, response, NULL);
 }
 
 

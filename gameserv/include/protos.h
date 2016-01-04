@@ -77,6 +77,8 @@ struct pack_del_group {
 
 struct pack_list_group {
 	uint32_t userid;
+	uint32_t pos;
+	uint32_t count;
 };
 
 struct pack_join_group {

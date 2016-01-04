@@ -109,6 +109,9 @@ struct _packet {
     uint8_t data[MAX_PAYLOAD];
 };
 
+#define data_to_packet(ptr)  \
+	node_to_item(ptr, packet_t, data)
+
 
 /** PACKET RECEIVER
  **

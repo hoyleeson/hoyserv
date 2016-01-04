@@ -18,6 +18,7 @@
 #define _CUTILS_LIST_H_
 
 #include <stddef.h>
+#include <common/utils.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,8 +30,6 @@ struct listnode
     struct listnode *prev;
 };
 
-#define node_to_item(node, container, member) \
-    (container *) (((char*) (node)) - offsetof(container, member))
 
 #define list_declare(name) \
     struct listnode name = { \

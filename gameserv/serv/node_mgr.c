@@ -37,12 +37,14 @@ struct task_operations *find_task_protos_by_type(int type)
 
 static int node_register(node_mgr_t *mgr, node_info_t *node)
 {
+	logd("node server register success.\n");
 	list_add_tail(&mgr->nodelist, &node->node);
 	mgr->node_count++;
 }
 
 static void node_unregister(node_mgr_t *mgr, node_info_t *node)
 {
+	logd("node server unregister success.\n");
 	list_remove(&node->node);
 	mgr->node_count--;
 }
@@ -58,10 +60,12 @@ static void *nodemgr_task_pkt_alloc(node_info_t *node)
 
 static void nodemgr_task_pkt_send(node_info_t *node, int type, void *data, int len)
 {
+	packet_t *packet;
 	pack_head_t *head;
-	packet_t *packet = (packet_t *)((uint8_t *)data - pack_head_len());
 
-	head = (pack_head_t *)packet->data;
+	head = (pack_head_t *)((uint8_t *)data - pack_head_len());
+	packet = data_to_packet(head);
+
 	init_pack(head, type, len);
 	head->seqnum = node->nextseq++;
 
@@ -113,9 +117,40 @@ static void node_close_fn(void *user)
 	node_unregister(node->mgr, node);
 }
 
+
+static inline int calc_node_priority(int old_prio, int regulate)
+{
+	return old_prio + regulate;	
+}
+
+static inline int calc_node_weight(node_info_t *n)
+{
+	if(!n)
+		return 0x7fffffff;
+	
+	/* ingore priority */
+	return n->task_count;
+}
+
+static int node_weight_compare(node_info_t *n1, node_info_t *n2)
+{
+	int n1_weight = calc_node_weight(n1);
+	int n2_weight = calc_node_weight(n2);
+
+	return n1_weight - n2_weight;
+}
+
 static node_info_t *nodemgr_choice_node(node_mgr_t *mgr, int priority)
 {
+	node_info_t *node, *p;
 
+	list_for_each_entry(p, &mgr->nodelist, node) {
+		if(node_weight_compare(node, p)) {
+			node = p;
+		}
+	}
+
+	return node;
 }
 
 
@@ -151,6 +186,8 @@ task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 		return NULL;
 
 	node = nodemgr_choice_node(mgr, priority);
+	node->task_count++;
+	node->priority = calc_node_priority(node->priority, priority);
 
 	task->node = node;
 	task->taskid = alloc_taskid(mgr);
@@ -197,6 +234,7 @@ int nodemgr_task_reclaim(node_mgr_t *mgr, task_handle_t *task,
 		return -EINVAL;
 
 	node = task->node;
+	node->task_count--;
 
 	pkt = (struct pack_task_reclaim *)nodemgr_task_pkt_alloc(node);
 
@@ -252,6 +290,8 @@ static void nodemgr_accept_fn(void* user, int acceptfd)
 	node_info_t *node;
 	node_mgr_t *mgr = (node_mgr_t *)user;
 
+	logd("accept node server connect.\n");
+
 	node = malloc(sizeof(*node));
 	if(!node)
 		return;
@@ -260,6 +300,7 @@ static void nodemgr_accept_fn(void* user, int acceptfd)
 	node->mgr = mgr;
 	node->hand = fdhandler_create(acceptfd, node_hand_fn, node_close_fn, node);
 	node->nextseq = 0;
+	node->task_count = 0;
 
 	response_wait_init(&node->waits, HASH_WAIT_OBJ_DEFAULT_CAPACITY);
 	
@@ -280,6 +321,7 @@ node_mgr_t *node_mgr_init(void)
 	if(!nodemgr)
 		return NULL;
 
+	sock = socket_inaddr_any_server(NODE_SERV_LOGIN_PORT, SOCK_STREAM);
 	nodemgr->hand = fdhandler_accept_create(sock, nodemgr_accept_fn, nodemgr_close_fn, nodemgr);
 	list_init(&nodemgr->nodelist);
 

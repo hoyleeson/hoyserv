@@ -34,17 +34,20 @@ static void *client_pkt_alloc(cli_mgr_t *cm)
 static void client_pkt_sendto(cli_mgr_t *cm, int type, 
 		void *data, int len, struct sockaddr *to)
 {
+	packet_t *packet;
 	pack_head_t *head;
-	packet_t *packet = (packet_t *)((uint8_t *)data - pack_head_len());
+
+	head = (pack_head_t *)((uint8_t *)data - pack_head_len());
+	packet = data_to_packet(head);
 
 	/* init header */
-	head = (pack_head_t *)packet->data;
 	init_pack(head, type, len);
 	head->seqnum = cm->nextseq++;
 
 	packet->len = len + pack_head_len();
 	packet->addr = *to;
 
+	dump_data("client mgr receive data", packet->data, packet->len);
 	fdhandler_pkt_submit(cm->hand, packet);
 }
 
@@ -88,6 +91,7 @@ static void login_result_response(cli_mgr_t *cm,
 	userid = (uint32_t *)client_pkt_alloc(cm);
 	*userid = uinfo->userid;
 
+	printf("user:%u", *userid);
 	client_pkt_sendto(cm, MSG_LOGIN_RESPONSE, userid, sizeof(uint32_t), to);
 }
 
@@ -109,7 +113,8 @@ static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
 	cm->user_count++;
 	hashmapPut(cm->user_map, (void *)uinfo->userid, uinfo);
 
-	logi("user login. from %s, %d.\n", inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
+	logi("user login. from %s, %d, alloc userid:%u.\n", 
+			inet_ntoa(addr->sin_addr), ntohs(addr->sin_port), uinfo->userid);
 	login_result_response(cm, uinfo, from);
 	return 0;
 }
@@ -230,28 +235,47 @@ static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
 	return 0;
 }
 
+#define RESULT_MAX_LEN 	 	(4000)
 struct group_list_tmp {
+	int pos;
 	int count;
 	
-	int index;
-	uint8_t data[4000];
+	int curr_pos;
+	int offset;
+	int rescount;
+	uint8_t data[RESULT_MAX_LEN];
 };
 
+/* FIXME: tmp */
 static bool hash_entry_cb(void* key, void* value, void* context)
 {
 	group_desc_t *group;
 	group_info_t *ginfo = (group_info_t *)value;
 	struct group_list_tmp *rtmp = (struct group_list_tmp *)context;
 
-	group = (group_desc_t *)(rtmp->data + rtmp->index);
+	if(rtmp->pos < rtmp->curr_pos++)
+		return true;
+
+	if(rtmp->rescount >= rtmp->count) {
+		return false; /* submit */
+	}
+
+	if(rtmp->offset + sizeof(group_desc_t) >= RESULT_MAX_LEN) {
+		return false; /* submit */
+	}
+
+	group = (group_desc_t *)(rtmp->data + rtmp->offset);
 	group->groupid = ginfo->groupid;
 	group->flags = ginfo->flags;
 	group->namelen = strlen(ginfo->name);
 
+	if(RESULT_MAX_LEN - rtmp->offset < strlen(ginfo->name))
+		return false; /*no more space */
+
 	strncpy(group->name, ginfo->name, GROUP_NAME_MAX);
-	rtmp->index += (sizeof(group_desc_t) + group->namelen);
-	rtmp->count++;
-	
+	rtmp->offset += (sizeof(group_desc_t) + group->namelen);
+	rtmp->rescount++;
+
 	return true;
 }
 
@@ -265,11 +289,16 @@ static int cmd_list_group_handle(cli_mgr_t *cm, struct pack_list_group *pr)
 	if(!uinfo)
 		return -EINVAL;
 
-	rtmp.index = 0;
-	rtmp.count = 0;
+	rtmp.pos = pr->pos;
+	rtmp.count = pr->count;
+
+	rtmp.curr_pos = 0;
+	rtmp.offset = 0;
+	rtmp.rescount = 0;
+
 	hashmapForEach(cm->group_map, hash_entry_cb, &rtmp);
 
-//	send
+	client_pkt_sendto(cm, MSG_LIST_GROUP_RESPONSE, rtmp.data, rtmp.offset, &uinfo->addr);
 	return 0;
 }
 
@@ -355,11 +384,14 @@ static void cli_mgr_handle(void *opaque, uint8_t *data, int len, void *from)
 	void *payload;
 	struct sockaddr *cliaddr = from;
 
+	logd("client manager receive pack. len:%d\n", len);
 	if(data == NULL || len < sizeof(*head))
 		return;
 
 	head = (pack_head_t *)data;
 	payload = head + 1; 
+
+	logd("pack: type:%d, seq:%d, datalen:%d\n", head->type, head->seqnum, head->datalen);
 
 	if(head->magic != SERV_MAGIC ||
 		   	head->version != SERV_VERSION)
@@ -430,6 +462,7 @@ cli_mgr_t *cli_mgr_init(node_mgr_t *nodemgr)
 	int clifd;
 	cli_mgr_t *cm;
 
+	logd("clieng manager running.\n");
    	cm = malloc(sizeof(*cm));
 	if(!cm)
 		return NULL;

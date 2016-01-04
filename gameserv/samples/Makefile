@@ -1,6 +1,6 @@
 CC:=gcc
 
-CFLAGS := -I. -I./include -O2 -Wall
+CFLAGS := -I. -I./include -g -Wall
 LDFLAGS := -lpthread -lrt -L./lib -lclient
 
 SRCS := $(wildcard *.c)

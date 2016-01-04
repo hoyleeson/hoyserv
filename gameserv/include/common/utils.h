@@ -18,5 +18,8 @@ int fd_accept(int  fd);
 #define  xfree(p)    do { (free((p)), (p) = NULL); } while(0)
 #define  xrenew(p,count)  do { (p) = xrealloc((p),sizeof(*(p))*(count)); } while(0)
 
+#define node_to_item(node, container, member) \
+    (container *) (((char*) (node)) - offsetof(container, member))
+
 #endif
 

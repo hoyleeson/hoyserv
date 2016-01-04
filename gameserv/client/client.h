@@ -15,11 +15,11 @@ enum client_mode {
 	CLI_MODE_FULL_FUNCTION,
 };
 
+#define NAME_MAX_LEN 	(128)
 struct group_description {
 	uint32_t groupid;
 	uint16_t flags;
-	uint32_t namelen;
-	char name[0];
+	char name[NAME_MAX_LEN];
 };
 
 struct cli_context_state {
@@ -39,7 +39,7 @@ int client_login(void);
 int client_create_group(int open, const char *name, const char *passwd);
 void client_delete_group(void);
 
-int client_list_group(struct group_description *group);
+int client_list_group(int pos, int count, struct group_description *gres, int *rescount);
 int client_join_group(struct group_description *group, const char *passwd);
 void client_leave_group(void);
 

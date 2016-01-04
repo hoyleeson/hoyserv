@@ -16,6 +16,8 @@ struct _node_info {
 	fdhandler_t *hand;
 	int nextseq;
 	response_wait_t waits;
+	int task_count;
+	int priority;
 
 	struct listnode node;
 	node_mgr_t *mgr;
