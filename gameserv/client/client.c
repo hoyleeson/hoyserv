@@ -162,6 +162,10 @@ int client_create_group(int open, const char *name, const char *passwd)
 	cli->task.taskid = result.taskid;
 	cli->task.serv_addr = *((struct sockaddr_in*)&result.addr);
 
+	if(cli->mode == CLI_MODE_FULL_FUNCTION) {
+		client_task_start(cli->userid, cli->groupid, &cli->task.serv_addr);
+	}
+
 	return 0;
 }
 
@@ -218,6 +222,10 @@ int client_join_group(struct group_description *group, const char *passwd)
 	cli->groupid = result.groupid;
 	cli->task.taskid = result.taskid;
 	cli->task.serv_addr = *((struct sockaddr_in*)&result.addr);
+
+	if(cli->mode == CLI_MODE_FULL_FUNCTION) {
+		client_task_start(cli->userid, cli->groupid, &cli->task.serv_addr);
+	}
 
 	return 0;
 }
@@ -455,7 +463,7 @@ static void *client_thread_handle(void *args)
 }
 
 
-int client_task_start(const char *host, int port, uint32_t userid, uint32_t groupid)
+int client_task_start(uint32_t userid, uint32_t groupid, struct sockaddr_in *addr)
 {
 	int sock;
     struct hostent *hp;
@@ -464,17 +472,11 @@ int client_task_start(const char *host, int port, uint32_t userid, uint32_t grou
 
 	sock = socket_inaddr_any_server(CLIENT_TASK_PORT, SOCK_DGRAM);
 
-    hp = gethostbyname(host);
-    if(hp == 0){
-		cli->task.serv_addr.sin_addr.s_addr = inet_addr(host);
-	} else 
-		memcpy(&cli->task.serv_addr.sin_addr, hp->h_addr, hp->h_length);
-
-	cli->task.serv_addr.sin_family = AF_INET;
-    cli->task.serv_addr.sin_port = htons(port);
-	cli->task.nextseq = 0;
 	cli->userid = userid;
-	cli->groupid = userid;
+	cli->groupid = groupid;
+
+	cli->task.serv_addr = *addr;
+	cli->task.nextseq = 0;
 
 	cli->task.hand = fdhandler_udp_create(sock, cli_task_handle, cli_task_close, cli);
 
@@ -498,6 +500,7 @@ int client_init(const char *host, int mode, event_cb callback)
 	response_wait_init(&cli->waits, HASH_WAIT_OBJ_CAPACITY);
 
 	cli->callback = callback;
+	cli->mode = mode;
 	cli->running = 1;
 
 	ret = pthread_create(&th, NULL, client_thread_handle, cli);
@@ -532,15 +535,25 @@ int client_init(const char *host, int mode, event_cb callback)
 	return 0;
 }
 
-#if 0
-cli_state_t *client_state_save(void)
+int client_state_serialize(struct cli_context_state *state)
 {
+	struct client *cli = &_client;
 
+	state->userid = cli->userid;
+	state->groupid = cli->groupid;
+	state->addr = cli->task.serv_addr;
+
+	return 0;
 }
 
-int client_state_load(cli_state_t *state)
+int client_state_deserialize(void *data, struct cli_context_state *state)
 {
+	struct cli_context_state *s;
 
+	s = (struct cli_context_state *)data;
+
+	*state = *s;
+	return 0;
 }
 
-#endif
+

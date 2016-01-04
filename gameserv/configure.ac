@@ -50,8 +50,7 @@ AC_CONFIG_FILES([Makefile
 				 client/Makefile
 				 common/Makefile
 				 include/Makefile include/common/Makefile 
-				 serv/Makefile
-				 samples/Makefile ])
+				 serv/Makefile ])
 
 
 AC_OUTPUT

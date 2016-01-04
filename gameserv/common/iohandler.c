@@ -196,12 +196,12 @@ int looper_exec(looper_t* l) {
 	} while (count < 0 && errno == EINTR);
 
 	if (count < 0) {
-		loge("%s: error: %s", __func__, strerror(errno));
+		loge("%s: error: %s\n", __func__, strerror(errno));
 		return -EINVAL;
 	}
 
 	if (count == 0) {
-		loge("%s: huh ? epoll returned count=0", __func__);
+		loge("%s: huh ? epoll returned count=0\n", __func__);
 		return 0;
 	}
 

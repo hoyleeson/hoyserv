@@ -2,6 +2,8 @@
 #define _TURN_CLIENT_H_
 
 #include <stdint.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +20,13 @@ struct group_description {
 	uint16_t flags;
 	uint32_t namelen;
 	char name[0];
+};
+
+struct cli_context_state {
+	uint32_t userid;
+	uint32_t groupid;
+
+	struct sockaddr_in addr;
 };
 
 /* event callback routine.
@@ -38,7 +47,10 @@ void client_send_command(void *data, int len);
 void client_send_state_img(void *data, int len);
 
 int client_init(const char *host, int mode, event_cb callback);
-int client_task_start(const char *host, int port, uint32_t userid, uint32_t groupid);
+int client_task_start(uint32_t userid, uint32_t groupid, struct sockaddr_in *addr);
+
+int client_state_serialize(struct cli_context_state *state);
+int client_state_deserialize(void *data, struct cli_context_state *state);
 
 enum {
 	EVENT_NONE,
