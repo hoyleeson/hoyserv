@@ -68,17 +68,17 @@ static inline int default_init_assign_response_pkt(task_t *task,
 	return sizeof(struct pack_task_assign_response);
 }
 
-
 void task_protos_register(struct task_operations *ops);
 void task_protos_unregister(struct task_operations *ops);
 struct task_operations *find_task_protos_by_type(int type);
 
 
-
 task_t *create_task(int priv_size);
 void release_task(task_t *task);
 void *task_worker_pkt_alloc(task_t *task);
+void task_worker_pkt_sendto(task_t *task, int type, void *data, int len, struct sockaddr *to);
 
+void task_protos_init(void);
 
 #endif
 

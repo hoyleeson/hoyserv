@@ -42,6 +42,14 @@ AC_CHECK_FUNCS([clock_gettime gethostbyname gettimeofday inet_ntoa memset socket
 
 AC_CHECK_LIB(pthread, pthread_create) 
 
+# enable debug or not                                                          
+AC_ARG_ENABLE(debug, AS_HELP_STRING([--enable-debug], [enable DEBUG mode(default=no)]), [], [enable_debug=no])                                              
+AS_IF([test "x$enable_debug" = "xyes"], [CFLAGS="-g2 -O0 -DDEBUG -Wall"], 
+	  [test "x$enable_debug" = "xno"], [CFLAGS="-O2 -Wall"], [])     
+AS_IF([test "x$enable_debug" = "xyes"], [CXXFLAGS="-g2 -O0 -DDEBUG -Wall"],
+	  [test "x$enable_debug" = "xno"], [CXXFLAGS="-O2 -Wall"], [])     
+
+
 GLOBAL_CFLAGS=-DVDEBUG
 
 AC_SUBST(GLOBAL_CFLAGS)

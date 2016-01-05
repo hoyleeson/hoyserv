@@ -1,5 +1,6 @@
 #include <stdarg.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -9,8 +10,11 @@
 
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <common/log.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
 
 /** UTILITIES
  **/
@@ -100,10 +104,39 @@ int fd_accept(int  fd)
     int              ret;
 
     do {
-        ret = accept(fd, &from, &fromlen);
-    } while (ret < 0 && errno == EINTR);
+		ret = accept(fd, &from, &fromlen);
+	} while (ret < 0 && errno == EINTR);
 
-    return ret;
+	return ret;
 }
 
+int get_ipaddr(const char* eth, char* ipaddr)
+{
+	int i = 0;
+	int sockfd;
+	struct ifconf ifconf;
+	char buf[512];
+	struct ifreq *ifreq;
+
+	ifconf.ifc_len = 512;
+	ifconf.ifc_buf = buf;
+
+	if((sockfd = socket(AF_INET, SOCK_DGRAM, 0))<0) {
+		perror("socket");
+		exit(1);
+	}
+
+	ioctl(sockfd, SIOCGIFCONF, &ifconf);
+	ifreq = (struct ifreq*)buf;
+
+	for(i=(ifconf.ifc_len/sizeof(struct ifreq)); i>0; i--) {
+		if(strcmp(ifreq->ifr_name, eth)==0) {
+			strcpy(ipaddr, inet_ntoa(((struct sockaddr_in*)&(ifreq->ifr_addr))->sin_addr));
+			return 0;
+		}
+
+		ifreq++;
+	}
+	return -EINVAL;
+}
 

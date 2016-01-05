@@ -9,6 +9,8 @@
 #include <common/log.h>
 #include <common/pack.h>
 #include <common/wait.h>
+#include <common/sockets.h>
+#include <common/iohandler.h>
 #include <arpa/inet.h>
 
 #include "node_mgr.h"
@@ -47,21 +49,10 @@ static void client_pkt_sendto(cli_mgr_t *cm, int type,
 	packet->len = len + pack_head_len();
 	packet->addr = *to;
 
-	dump_data("client mgr receive data", packet->data, packet->len);
+	dump_data("client mgr send data", packet->data, packet->len);
 	fdhandler_pkt_submit(cm->hand, packet);
 }
 
-
-
-static int cli_mgr_send_pack(cli_mgr_t *cm, pack_head_t *pkt, void *to)
-{
-	int len = sizeof(pack_head_t) + pkt->datalen;
-	pkt->seqnum = cm->nextseq++;
-
-	fdhandler_sendto(cm->hand, (const uint8_t *)pkt, len, to);
-
-	return 0;
-}
 
 static void cli_mgr_send_ack(cli_mgr_t *cm, pack_head_t *head)
 {
@@ -80,7 +71,7 @@ static inline int cli_mgr_alloc_gid(cli_mgr_t *cm)
 
 static int cli_ack_handle(cli_mgr_t *cm, uint16_t seqnum)
 {
-
+	return 0;
 }
 
 static void login_result_response(cli_mgr_t *cm, 
@@ -91,7 +82,6 @@ static void login_result_response(cli_mgr_t *cm,
 	userid = (uint32_t *)client_pkt_alloc(cm);
 	*userid = uinfo->userid;
 
-	printf("user:%u", *userid);
 	client_pkt_sendto(cm, MSG_LOGIN_RESPONSE, userid, sizeof(uint32_t), to);
 }
 
@@ -115,7 +105,9 @@ static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
 
 	logi("user login. from %s, %d, alloc userid:%u.\n", 
 			inet_ntoa(addr->sin_addr), ntohs(addr->sin_port), uinfo->userid);
+
 	login_result_response(cm, uinfo, from);
+
 	return 0;
 }
 
@@ -148,7 +140,7 @@ static void create_group_response(cli_mgr_t *cm, group_info_t *ginfo, struct soc
 
 	result->groupid = ginfo->groupid;
 	result->taskid = info.taskid;
-	result->addr = info.addr;
+	result->addr = *((struct sockaddr *)&info.addr);
 
 	client_pkt_sendto(cm, MSG_CREATE_GROUP_RESPONSE, result, sizeof(*result), to);
 }
@@ -157,6 +149,8 @@ static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
 {
 	group_info_t *ginfo;
 	user_info_t *creater;
+
+	logd("create group request from user:%u.\n", pr->userid);
 
 	creater = hashmapGet(cm->user_map, (void*)pr->userid);
 	if(!creater)
@@ -170,10 +164,10 @@ static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
 	ginfo->flags = pr->flags;
 	list_init(&ginfo->userlist);
 
-	strncpy(ginfo->name, pr->name, GROUP_NAME_MAX);
+	strncpy(ginfo->name, (char *)pr->name, GROUP_NAME_MAX);
 
 	if(ginfo->flags & GROUP_TYPE_NEED_PASSWD)
-		strncpy(ginfo->passwd, pr->passwd, GROUP_PASSWD_MAX);
+		strncpy(ginfo->passwd, (char *)pr->passwd, GROUP_PASSWD_MAX);
 
 	list_add_tail(&ginfo->userlist, &creater->node);
 	ginfo->users++;
@@ -211,7 +205,7 @@ static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
 	group_info_t *ginfo;
 	user_info_t *creater, *user;
 
-	ginfo = hashmapRemove(cm->group_map, (void *)ginfo->groupid);
+	ginfo = hashmapRemove(cm->group_map, (void *)pr->groupid);
 	if(!ginfo)
 		return -EINVAL;
 
@@ -230,6 +224,8 @@ static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
 	}
 
 	ret = turn_task_reclaim(cm->node_mgr, ginfo->turn_handle);
+	if(ret)
+		logw("turn task reclaim fail.\n");
 
 	free(ginfo);
 	return 0;
@@ -243,7 +239,7 @@ struct group_list_tmp {
 	int curr_pos;
 	int offset;
 	int rescount;
-	uint8_t data[RESULT_MAX_LEN];
+	uint8_t *data;
 };
 
 /* FIXME: tmp */
@@ -295,6 +291,7 @@ static int cmd_list_group_handle(cli_mgr_t *cm, struct pack_list_group *pr)
 	rtmp.curr_pos = 0;
 	rtmp.offset = 0;
 	rtmp.rescount = 0;
+	rtmp.data = client_pkt_alloc(cm);
 
 	hashmapForEach(cm->group_map, hash_entry_cb, &rtmp);
 
@@ -313,7 +310,7 @@ static void join_group_response(cli_mgr_t *cm, group_info_t *ginfo, struct socka
 
 	result->groupid = ginfo->groupid;
 	result->taskid = info.taskid;
-	result->addr = info.addr;
+	result->addr = *((struct sockaddr *)&info.addr);
 
 	client_pkt_sendto(cm, MSG_JOIN_GROUP_RESPONSE, result, sizeof(*result), to);
 }
@@ -387,6 +384,8 @@ static void cli_mgr_handle(void *opaque, uint8_t *data, int len, void *from)
 	logd("client manager receive pack. len:%d\n", len);
 	if(data == NULL || len < sizeof(*head))
 		return;
+
+	dump_data("client mgr receive data", data, len);
 
 	head = (pack_head_t *)data;
 	payload = head + 1; 

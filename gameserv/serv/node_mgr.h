@@ -5,6 +5,7 @@
 #include <common/list.h>
 #include <common/wait.h>
 #include <common/iohandler.h>
+#include <arpa/inet.h>
 
 #include "task.h"
 
@@ -20,6 +21,7 @@ struct _node_info {
 	int priority;
 
 	struct listnode node;
+	struct sockaddr_in addr;
 	node_mgr_t *mgr;
 };
 
@@ -35,7 +37,7 @@ typedef struct _task_handle {
 	int type;
 	int priority;
 	
-	struct sockaddr addr; 	/* assign response */
+	struct sockaddr_in addr; 	/* assign response */
 	struct task_operations *ops;
 
 	node_info_t *node;

@@ -12,7 +12,7 @@ if [ -e $INSTAL_DIR ]; then
 	mkdir -p $INSTAL_DIR
 fi
 
-./configure --prefix=$INSTAL_DIR
+./configure --enable-debug --prefix=$INSTAL_DIR 
 
 make
 make install

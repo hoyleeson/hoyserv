@@ -29,6 +29,7 @@
 #include <sys/select.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #endif
 
 #define LISTEN_BACKLOG 4
@@ -37,7 +38,6 @@
 int socket_inaddr_any_server(int port, int type)
 {
     struct sockaddr_in addr;
-    size_t alen;
     int s, n;
 
     memset(&addr, 0, sizeof(addr));
@@ -79,7 +79,6 @@ int socket_network_client(const char *host, int port, int type)
 {
     struct hostent *hp;
     struct sockaddr_in addr;
-    socklen_t alen;
     int s;
 
     hp = gethostbyname(host);

@@ -8,6 +8,7 @@
 #include <errno.h>
 
 #include <common/timer.h>
+#include <common/log.h>
 #include <common/utils.h>
 #include <common/iohandler.h>
 

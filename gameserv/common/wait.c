@@ -1,11 +1,14 @@
 #include <stdlib.h>
 #include <semaphore.h>
+#include <string.h>
+#include <sys/time.h>
 
 #include <common/wait.h>
 
 #define ms2ns(ms) ((ms)*1000*1000)
 
-#define WAIT_PACKET_TIMEOUT_MS 		(10 * 1000)
+//#define WAIT_PACKET_TIMEOUT_MS 		(10 * 1000)
+#define WAIT_PACKET_TIMEOUT_MS 		(1000 * 1000) 	//debug
 
 int wait_obj_init(wait_obj_t *wait) 
 {

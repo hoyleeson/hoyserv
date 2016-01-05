@@ -13,6 +13,7 @@
 
 #include <protos.h>
 #include "turn.h"
+#include "task.h"
 #include "protos_internal.h"
 #include "node_mgr.h"
 #include "cli_mgr.h"
@@ -76,7 +77,7 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 	group_info_t *group = turn->group;
 
 	if(!group)
-		return;
+		return -EINVAL;
 
 	ta = (struct pack_turn_assign *)pkt;
 	len = sizeof(*ta) + sizeof(client_tuple_t)*ta->cli_count;
@@ -111,7 +112,6 @@ static int init_turn_task_reclaim(task_baseinfo_t *base,
 static int init_turn_task_control(task_baseinfo_t *base,
 	   	struct pack_task_control *pkt)
 {
-	int i = 0;
 	int len;
 	user_info_t *user;
 	struct pack_turn_control *tc;
@@ -140,6 +140,7 @@ static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
 	struct pack_turn_assign *ta;
 	task_t *task;
 	struct turn_task *ttask;
+	struct sockaddr_in *addr;
 
 	ta = (struct pack_turn_assign *)pkt;
 
@@ -150,6 +151,9 @@ static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
 
 	for(i=0; i<ta->cli_count; i++) {
 		ttask->tuple[i] = ta->tuple[i];
+
+		addr = (struct sockaddr_in *)&(ttask->tuple[i].addr);
+		addr->sin_port = htons(CLIENT_TASK_PORT); /* XXX */
 	}
 
 	return task;
@@ -171,6 +175,7 @@ static int turn_task_control_handle(task_t *task, int opt, struct pack_task_cont
 	int i;
 	struct pack_turn_control *tc;
 	struct turn_task *ttask;
+	struct sockaddr_in *addr;
 
 	tc = (struct pack_turn_control *)pkt;
 	ttask = (struct turn_task *)&task->priv_data;
@@ -181,6 +186,8 @@ static int turn_task_control_handle(task_t *task, int opt, struct pack_task_cont
 				return -EINVAL;
 
 			ttask->tuple[ttask->cli_count++] = tc->tuple;
+			addr = (struct sockaddr_in *)&(ttask->tuple[i].addr);
+			addr->sin_port = htons(CLIENT_TASK_PORT); /* XXX */
 			break;
 		case TURN_TYPE_USER_LEAVE:
 			for(i=0; i<ttask->cli_count; i++) {
@@ -216,7 +223,6 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 	int i;
 	void *data;
 	struct turn_task *ttask;
-	struct sockaddr_in addr;
 
 	ttask = (struct turn_task *)&task->priv_data;
 
@@ -227,9 +233,8 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 		if(pack->userid == ttask->tuple[i].userid)
 			continue;
 
-		addr = *((struct sockaddr_in *)&(ttask->tuple[i].addr));
-		addr.sin_port = htons(CLIENT_TASK_PORT); /* XXX */
-		task_worker_pkt_sendto(task, MSG_TURN_PACK, data, pack->datalen, &addr);
+		task_worker_pkt_sendto(task, MSG_TURN_PACK, 
+				data, pack->datalen, &(ttask->tuple[i].addr));
 	}
 
 	return 0;
@@ -252,5 +257,17 @@ struct task_operations turn_ops = {
 
 	.task_handle = turn_task_handle,
 };
+
+int turn_init(void) 
+{
+	task_protos_register(&turn_ops);
+	return 0;
+}
+
+int turn_release(void) 
+{
+	task_protos_unregister(&turn_ops);
+	return 0;
+}
 
 

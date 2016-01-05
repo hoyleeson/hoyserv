@@ -210,6 +210,7 @@ void fdhandler_list_init(fdhandler_list_t* list, looper_t* looper);
 void fdhandler_close(fdhandler_t*  f);
 void fdhandler_shutdown(fdhandler_t*  f);
 void fdhandler_send(fdhandler_t *f, const uint8_t *data, int len);
+void fdhandler_sendto(fdhandler_t *f, const uint8_t *data, int len, void *to);
 
 fdhandler_t* fdhandler_create(int fd, handle_func hand_fn, close_func close_fn, void *data);
 fdhandler_t* fdhandler_udp_create(int fd, handlefrom_func hand_fn, close_func close_fn, void *data);

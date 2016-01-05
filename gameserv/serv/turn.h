@@ -13,7 +13,7 @@ enum turn_control_type {
 struct turn_info
 {
 	uint32_t taskid;
-	struct sockaddr addr;
+	struct sockaddr_in addr;
 };
 
 unsigned long turn_task_assign(node_mgr_t *mgr, group_info_t *group);
@@ -32,6 +32,8 @@ static inline int turn_task_user_leave(node_mgr_t *mgr, unsigned long handle, us
 	return turn_task_control(mgr, handle, TURN_TYPE_USER_LEAVE, user);
 }
 
+int turn_init(void);
+int turn_release(void);
 
 #endif
 

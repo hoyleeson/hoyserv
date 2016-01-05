@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
@@ -8,6 +9,7 @@
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <arpa/inet.h>
 
 #include <common/iohandler.h>
 #include <common/log.h>
@@ -25,7 +27,7 @@ static struct iohandler _iohandler;
 /* initialize a looper object */
 void looper_init(looper_t*  l)
 {
-    l->epoll_fd = epoll_create(4);
+    l->epoll_fd = epoll_create(1);
     l->num_fds  = 0;
     l->max_fds  = 0;
     l->events   = NULL;
@@ -146,6 +148,7 @@ void looper_enable(looper_t*  l, int  fd, int  events)
         ev.events   = hook->wanted;
         ev.data.ptr = hook;
 
+		printf("----%s:%d---\n", __func__, __LINE__);
         epoll_ctl(l->epoll_fd, EPOLL_CTL_MOD, fd, &ev);
     }
 }
@@ -193,6 +196,7 @@ int looper_exec(looper_t* l) {
 
 	do {
 		count = epoll_wait(l->epoll_fd, l->events, l->num_fds, -1);
+		printf("----%s:%d-%d:%d--\n", __func__, __LINE__, count, errno );
 	} while (count < 0 && errno == EINTR);
 
 	if (count < 0) {
@@ -205,6 +209,7 @@ int looper_exec(looper_t* l) {
 		return 0;
 	}
 
+		printf("----%s:%d---\n", __func__, __LINE__);
 	/* mark all pending hooks */
 	for (n = 0; n < count; n++) {
 		loop_hook_t*  hook = l->events[n].data.ptr;
@@ -415,6 +420,7 @@ static void fdhandler_enqueue(fdhandler_t*  f, packet_t*  p)
     if (first == NULL) {
         f->out_pos = 0;
         looper_enable(f->list->looper, f->fd, EPOLLOUT);
+		printf("----%s:%d---\n", __func__, __LINE__);
     }
 }
 
@@ -464,14 +470,14 @@ void fdhandler_pkt_submit(fdhandler_t *f, packet_t *p)
 
 static int fdhandler_read(fdhandler_t*  f)
 {
-	int      len;
 	packet_t*  p = packet_alloc();
 
 	switch(f->type) {
 		case HANDLER_TYPE_UDP:
 		{
 			struct sockaddr src_addr;
-		   	socklen_t addrlen;
+		   	socklen_t addrlen = sizeof(struct sockaddr_in);
+			bzero(&src_addr, sizeof(src_addr));
 			p->len = recvfrom(f->fd, p->data, MAX_PAYLOAD, 0, &src_addr, &addrlen);
 			p->addr = src_addr;
 			break;
@@ -495,6 +501,7 @@ static int fdhandler_read(fdhandler_t*  f)
 	return 0;
 fail:
 	packet_free(&p);
+	return -EINVAL;
 }
 
 
@@ -504,6 +511,7 @@ static int fdhandler_write(fdhandler_t*  f)
 	packet_t*  p = f->out_first;
 	avail = p->len - f->out_pos;
 
+		printf("----%s:%d---\n", __func__, __LINE__);
 	switch(f->type) {
 		case HANDLER_TYPE_UDP:
 			len = sendto(f->fd, p->data + f->out_pos, avail, 0, 
@@ -515,6 +523,17 @@ static int fdhandler_write(fdhandler_t*  f)
 			len = fd_write(f->fd, p->data + f->out_pos, avail);
 			break;
 
+	}
+	if(len < 0) {
+		f->out_pos   = 0;
+		f->out_first = p->next;
+		packet_free(&p);
+		if (f->out_first == NULL) {
+			f->out_ptail = &f->out_first;
+			looper_disable(f->list->looper, f->fd, EPOLLOUT);
+		}
+		loge("send data fail, ret=%d, droped.\n", len);
+		return -EINVAL;
 	}
 
 	f->out_pos += len;
@@ -535,15 +554,13 @@ out:
 /* fdhandler_t file descriptor event callback for read/write ops */
 static void fdhandler_event(fdhandler_t*  f, int  events)
 {
-   int  len;
-
+		printf("----%s:%d---\n", __func__, __LINE__);
     /* in certain cases, it's possible to have both EPOLLIN and
      * EPOLLHUP at the same time. This indicates that there is incoming
      * data to read, but that the connection was nonetheless closed
      * by the sender. Be sure to read the data before closing
      * the receiver to avoid packet loss.
      */
-
     if (events & EPOLLIN) {
 		fdhandler_read(f);
     }

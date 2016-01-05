@@ -54,7 +54,7 @@ enum client_msg_type {
 };
 
 enum task_type {
-	TASK_TURN,
+	TASK_TURN = 1,
 };
 
 
@@ -73,6 +73,7 @@ struct pack_creat_group {
 
 struct pack_del_group {
 	uint32_t userid;
+	uint32_t groupid;
 };
 
 struct pack_list_group {

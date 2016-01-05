@@ -1,9 +1,15 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <getopt.h>
+#include <string.h>
 
 #include <protos.h>
 #include <common/log.h>
+#include <common/utils.h>
+#include <common/iohandler.h>
+
+#include "serv.h"
+#include "turn.h"
 
 #define SERV_MODE_CENTER_SERV  	(1 << 0)
 #define SERV_MODE_NODE_SERV 	 	(1 << 1)
@@ -11,17 +17,6 @@
 #define SERV_MODE_UNKNOWN  			(0)
 
 #define LOCAL_HOST 	"127.0.0.1"
-
-struct {
-	char *keystr;
-	int mode;
-} mode_maps[] = {
-	{ "center", SERV_MODE_CENTER_SERV },
-	{ "node", SERV_MODE_NODE_SERV}, 
-	{ "full", SERV_MODE_FULL_FUNC }, 
-};
-
-#define ARRAY_SIZE(x) 	(sizeof(x)/sizeof((x)[0]))
 
 static const struct option longopts[] = {
 	{"mode", required_argument, 0, 'm'},
@@ -32,10 +27,27 @@ static const struct option longopts[] = {
 };
 
 
+struct {
+	char *keystr;
+	int mode;
+} mode_maps[] = {
+	{ "center", SERV_MODE_CENTER_SERV },
+	{ "node", SERV_MODE_NODE_SERV}, 
+	{ "full", SERV_MODE_FULL_FUNC }, 
+};
+
+struct {
+	char *desc;
+	int (*init)(void);
+	int (*release)(void);
+} task_protos[] = {
+	{ "turn", turn_init, turn_release },
+};
+
+
 static int serv_mode_parse(const char *m) 
 {
 	int i;
-	int mode;
 
 	for(i=0; i<ARRAY_SIZE(mode_maps); i++) {
 		if(!strcmp(mode_maps[i].keystr, m))	
@@ -43,6 +55,19 @@ static int serv_mode_parse(const char *m)
 	}
 
 	return SERV_MODE_UNKNOWN;
+}
+
+
+static void init_task_protocals(void)
+{
+	int i;
+	int ret = 0;
+
+	task_protos_init();
+	for(i=0; i<ARRAY_SIZE(task_protos); i++) {
+		ret = task_protos[i].init();
+		logi("init protos %s %s.\n", task_protos[i].desc, ret ? "success":"fail");
+	}
 }
 
 int main(int argc, char **argv)
@@ -71,6 +96,7 @@ int main(int argc, char **argv)
 
 	logi("server running. mode=%d\n", mode);
 	iohandler_init();
+	init_task_protocals();
 
 	if(mode & SERV_MODE_CENTER_SERV) {
 		chost = LOCAL_HOST;

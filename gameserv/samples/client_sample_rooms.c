@@ -72,6 +72,8 @@ static void run_netplay()
 		char *newargv[] = { NULL, NULL };
 		char *newenviron[] = { NULL };
 
+		printf("startup sample netplay.\n");
+
 		execve("./sample_netplay", newargv, newenviron);
 	} else {
 
@@ -109,6 +111,7 @@ static void run_netplay()
 
 static int create_group(int argc, char **argv) 
 {
+	int ret;
 	int open = 1;
 	char *name;
 	char *passwd;
@@ -121,14 +124,20 @@ static int create_group(int argc, char **argv)
 	if(argc > 2)
 		passwd = argv[2];
 	else
-		passwd = "123456";
+		passwd = "";
 
 	if(argc > 3)
 		open = atoi(argv[3]);
 	else
 		open = 1;
 
-	client_create_group(open, name, passwd);
+	printf("create room, %d, name:%s, passwd:%s\n", 
+			open, name, passwd);
+	ret = client_create_group(open, name, passwd);
+	if(ret) {
+		printf("create room fail.\n");
+		return -1;
+	}
 	run_netplay();
 
 	return 0;
@@ -234,7 +243,7 @@ int main(int argc, char **argv)
 	while(fgets(buf, sizeof(buf), stdin)) {
 		int i;
 
-		if(strcmp(buf, "quit")) {
+		if(!strcmp(buf, "quit")) {
 			break;
 		}
 
@@ -244,13 +253,15 @@ int main(int argc, char **argv)
 			continue;
 
 		for(i=0; i<ARRAY_SIZE(cmds); i++) {
-			if(!strcmp(cmds[i].cmd, cmd_argv[0])) {
+			if(!strncmp(cmds[i].cmd, cmd_argv[0], strlen(cmds[i].cmd))) {
+				printf("exec %s.\n", cmds[i].cmd);
 				cmds[i].func(ret, cmd_argv);
 				break;
 			}
 		}
 	}
 
+	printf("exit.\n");
 	return 0;
 }
 

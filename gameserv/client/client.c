@@ -148,11 +148,11 @@ int client_create_group(int open, const char *name, const char *passwd)
 		p->flags |= GROUP_TYPE_OPENED;
 
 	if(name)
-		strncpy(p->name, name, GROUP_NAME_MAX);
+		strncpy((char *)p->name, name, GROUP_NAME_MAX);
 
 	if(passwd) {
 		p->flags |= GROUP_TYPE_NEED_PASSWD;
-		strncpy(p->passwd, passwd, GROUP_PASSWD_MAX);
+		strncpy((char *)p->passwd, passwd, GROUP_PASSWD_MAX);
 	}
 
 	client_pkt_send(&cli->control, MSG_CLI_CREATE_GROUP, p, sizeof(*p));
@@ -203,7 +203,7 @@ int client_list_group(int pos, int count, struct group_description *gres, int *r
 
 	client_pkt_send(&cli->control, MSG_CLI_LIST_GROUP, p, sizeof(*p));
 
-	ret = wait_for_response_data(&cli->waits, MSG_LOGIN_RESPONSE, 0, 
+	ret = wait_for_response_data(&cli->waits, MSG_LIST_GROUP_RESPONSE, 0, 
 			result, &retlen); /* XXX */
 	if(ret)
 		return -EINVAL;
@@ -346,7 +346,6 @@ static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 	struct client *cli = user;
 	pack_head_t *head;
 	void *payload;
-	struct sockaddr *cliaddr = from;
 
 	logd("client receive pack. len:%d\n", len);
 
@@ -443,7 +442,6 @@ static void cli_task_handle(void* user, uint8_t *data, int len, void *from)
 	struct client *cli = user;
 	pack_head_t *head;
 	void *payload;
-	struct sockaddr *cliaddr = from;
 
 	if(data == NULL || len < sizeof(*head))
 		return;
@@ -499,8 +497,6 @@ static void *client_thread_handle(void *args)
 int client_task_start(uint32_t userid, uint32_t groupid, struct sockaddr_in *addr)
 {
 	int sock;
-    struct hostent *hp;
-	int ret;
 	struct client *cli = &_client;
 
 	sock = socket_inaddr_any_server(CLIENT_TASK_PORT, SOCK_DGRAM);
@@ -524,7 +520,7 @@ int client_init(const char *host, int mode, event_cb callback)
     struct hostent *hp;
 	int ret;
 	struct sockaddr_in addr; 	/* used for debug */
-	int addrlen; 	/* used for debug */
+	socklen_t addrlen; 	/* used for debug */
 	struct client *cli = &_client;
 	pthread_t th;
 

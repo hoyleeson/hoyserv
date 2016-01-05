@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <pthread.h>
 
 #include <common/pack.h>
 #include <protos.h>
@@ -69,9 +70,9 @@ void pack_buf_fill(pack_buf_t *pkb, void *data, int len, void  (*destructor)(pac
 
 pack_buf_t *pack_buf_get(pack_buf_t *pkb)
 {
-	pthread_mutex_lock(pkb->lock);
+	pthread_mutex_lock(&pkb->lock);
 	pkb->refcount++;
-	pthread_mutex_unlock(pkb->lock);
+	pthread_mutex_unlock(&pkb->lock);
 
 	return pkb;
 }
@@ -79,9 +80,9 @@ pack_buf_t *pack_buf_get(pack_buf_t *pkb)
 void free_pack_buf(pack_buf_t *pkb)
 {
 	int ref;
-	pthread_mutex_lock(pkb->lock);
+	pthread_mutex_lock(&pkb->lock);
 	ref = --pkb->refcount;
-	pthread_mutex_unlock(pkb->lock);
+	pthread_mutex_unlock(&pkb->lock);
 
 	if(!ref) {
 		pkb->destructor(pkb);

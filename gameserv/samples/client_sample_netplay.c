@@ -27,6 +27,8 @@ int main(int argc, char **argv)
 	int open_mode = O_RDONLY;
 	struct cli_context_state state;
 
+	printf("sample netplay enter..\n");
+
 	pipe_fd = open(fifo_name, open_mode);  
 	ret = read(pipe_fd, &state, sizeof(state));
 	if(ret < 0)

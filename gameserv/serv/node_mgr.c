@@ -6,40 +6,19 @@
 
 #include <common/log.h>
 #include <common/pack.h>
+#include <common/sockets.h>
 #include <common/wait.h>
 #include <arpa/inet.h>
 
 #include "node_mgr.h"
-
-static struct listnode task_protos_list;
-static pthread_mutex_t task_protos_lock;
-
-void task_protos_register(struct task_operations *ops) 
-{
-	list_add_tail(&task_protos_list, &ops->node);
-}
-
-void task_protos_unregister(struct task_operations *ops)
-{
-	list_remove(&ops->node);
-}
-
-struct task_operations *find_task_protos_by_type(int type) 
-{
-	struct task_operations *ops;
-	list_for_each_entry(ops, &task_protos_list, node) {
-		if(ops->type == type)
-			return ops;
-	}
-
-	return NULL;
-}
+#include "task.h"
 
 static int node_register(node_mgr_t *mgr, node_info_t *node)
 {
 	logd("node server register success.\n");
 	list_add_tail(&mgr->nodelist, &node->node);
 	mgr->node_count++;
+	return 0;
 }
 
 static void node_unregister(node_mgr_t *mgr, node_info_t *node)
@@ -70,6 +49,8 @@ static void nodemgr_task_pkt_send(node_info_t *node, int type, void *data, int l
 	head->seqnum = node->nextseq++;
 
 	packet->len = len + pack_head_len();
+
+
 	fdhandler_pkt_submit(node->hand, packet);
 }
 
@@ -82,17 +63,21 @@ static void copy_sockaddr(void *dst, void *src)
 
 static void node_hand_fn(void* opaque, uint8_t *data, int len)
 {
-	int ret;
 	node_info_t *node = (node_info_t *)opaque;
 	pack_head_t *head;
-	task_t *task;
 	void *payload;
+
+	logd("node manager receive pack. len:%d\n", len);
 
 	if(data == NULL || len < sizeof(*head))
 		return;
 
+	dump_data("node manager receive data", data, len);
+
 	head = (pack_head_t *)data;
 	payload = head + 1; 
+
+	logd("pack: type:%d, seq:%d, datalen:%d\n", head->type, head->seqnum, head->datalen);
 
 	if(head->magic != SERV_MAGIC ||
 		   	head->version != SERV_VERSION)
@@ -102,8 +87,14 @@ static void node_hand_fn(void* opaque, uint8_t *data, int len)
 		case MSG_TASK_ASSIGN_RESPONSE:
 		{
 			struct pack_task_assign_response *pt;
+
 			pt = (struct pack_task_assign_response *)payload;
 			response_post(&node->waits, MSG_TASK_ASSIGN_RESPONSE, pt->taskid, &pt->addr);
+#if 1
+			struct sockaddr_in *addr = (struct sockaddr_in *)&pt->addr;
+			logd("response :task worker address: %s, port: %d.\n", 
+					inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
+#endif
 			break;
 		}
 		default:
@@ -194,6 +185,10 @@ task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 	task->type = type;
 	task->priority = priority;
 	task->ops = find_task_protos_by_type(type);
+	if(!task->ops) {
+		logi("not found task protocol by type:%d.\n", type);
+		goto fail;
+	}
 
 	pkt = (struct pack_task_assign *)nodemgr_task_pkt_alloc(node);
 
@@ -205,9 +200,17 @@ task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 
 	nodemgr_task_pkt_send(node, MSG_TASK_ASSIGN, pkt, len);
 
-	wait_for_response(&node->waits, MSG_TASK_ASSIGN_RESPONSE, task->taskid, &task->addr);
+	/* get node server port by assign request. */
+//XXX	wait_for_response(&node->waits, MSG_TASK_ASSIGN_RESPONSE, task->taskid, &task->addr);
+	task->addr.sin_addr = node->addr.sin_addr; 	
+	logd("task worker address: %s, port: %d.\n", 
+			inet_ntoa(task->addr.sin_addr), ntohs(task->addr.sin_port));
 
 	return task;
+
+fail:
+	free(task);
+	return NULL;
 }
 
 
@@ -284,10 +287,10 @@ int nodemgr_task_control(node_mgr_t *mgr, task_handle_t *task,
 	return 0;
 }
 
-
 static void nodemgr_accept_fn(void* user, int acceptfd)
 {
 	node_info_t *node;
+	socklen_t addrlen;
 	node_mgr_t *mgr = (node_mgr_t *)user;
 
 	logd("accept node server connect.\n");
@@ -302,10 +305,20 @@ static void nodemgr_accept_fn(void* user, int acceptfd)
 	node->nextseq = 0;
 	node->task_count = 0;
 
+	addrlen = sizeof(node->addr);
+	if (getsockname(acceptfd, (struct sockaddr*)&node->addr, &addrlen) < 0) {
+		close(acceptfd);
+		goto fail;
+	}
+
 	response_wait_init(&node->waits, HASH_WAIT_OBJ_DEFAULT_CAPACITY);
-	
 	node_register(mgr, node);
+	return;
+
+fail:
+	free(node);
 }
+
 
 static void nodemgr_close_fn(void *user)
 {
@@ -324,8 +337,6 @@ node_mgr_t *node_mgr_init(void)
 	sock = socket_inaddr_any_server(NODE_SERV_LOGIN_PORT, SOCK_STREAM);
 	nodemgr->hand = fdhandler_accept_create(sock, nodemgr_accept_fn, nodemgr_close_fn, nodemgr);
 	list_init(&nodemgr->nodelist);
-
-	list_init(&task_protos_list);
 
 	return nodemgr;
 }
