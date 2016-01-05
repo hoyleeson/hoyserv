@@ -201,7 +201,7 @@ task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 	nodemgr_task_pkt_send(node, MSG_TASK_ASSIGN, pkt, len);
 
 	/* get node server port by assign request. */
-//XXX	wait_for_response(&node->waits, MSG_TASK_ASSIGN_RESPONSE, task->taskid, &task->addr);
+	wait_for_response(&node->waits, MSG_TASK_ASSIGN_RESPONSE, task->taskid, &task->addr);
 	task->addr.sin_addr = node->addr.sin_addr; 	
 	logd("task worker address: %s, port: %d.\n", 
 			inet_ntoa(task->addr.sin_addr), ntohs(task->addr.sin_port));

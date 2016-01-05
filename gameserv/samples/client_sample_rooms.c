@@ -70,11 +70,12 @@ static void run_netplay()
 	pid = fork();
 	if(pid == 0) {
 		char *newargv[] = { NULL, NULL };
-		char *newenviron[] = { NULL };
+		char *newenviron[] = { "PATH=$PATH", "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./lib" };
 
 		printf("startup sample netplay.\n");
 
 		execve("./sample_netplay", newargv, newenviron);
+		perror("execve");
 	} else {
 
 		if(access(fifo_name, F_OK) == -1) {  
