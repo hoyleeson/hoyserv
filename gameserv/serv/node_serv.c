@@ -117,7 +117,7 @@ void task_worker_pkt_sendto(task_t *task, int type,
 }
 
 /*XXX*/
-static int task_req_handle(task_worker_t *worker, struct pack_task_req *pack)
+static int task_req_handle(task_worker_t *worker, struct pack_task_req *pack, void *from)
 {
 	task_t *task;
 	struct task_operations *ops;
@@ -131,7 +131,8 @@ static int task_req_handle(task_worker_t *worker, struct pack_task_req *pack)
 		loge("not found task by taskid:%d.\n", pack->taskid);
 		return -EINVAL;
 	}
-	return ops->task_handle(task, pack);
+
+	return ops->task_handle(task, pack, from);
 }
 
 
@@ -162,7 +163,7 @@ static void task_worker_handle(void *opaque, uint8_t *data, int len, void *from)
 		case MSG_TASK_REQ:
 		{
 			struct pack_task_req *pack = (struct pack_task_req *)payload;
-			ret = task_req_handle(worker, pack);
+			ret = task_req_handle(worker, pack, from);
 			break;
 		}
 		default:

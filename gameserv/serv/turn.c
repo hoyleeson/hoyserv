@@ -122,16 +122,31 @@ static int init_turn_task_control(task_baseinfo_t *base,
 	tc = (struct pack_turn_control *)pkt;
 	len = sizeof(*tc);
 
+	tc->tuple.userid = user->userid;
 	tc->tuple.addr = user->addr;
 
 	return len;
 }
 
 
+/*************************************************************/
+
+enum cli_state {
+	STATE_INVAILD,
+	STATE_PENDING,
+	STATE_RUNNING,
+};
+
+struct cli {
+	uint32_t userid;
+	struct sockaddr_in addr;
+	uint8_t state;
+};
+
 struct turn_task {
 	uint32_t groupid;
 	int cli_count;
-	client_tuple_t tuple[GROUP_MAX_USER];
+	struct cli cli[GROUP_MAX_USER];
 };
 
 static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
@@ -140,7 +155,6 @@ static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
 	struct pack_turn_assign *ta;
 	task_t *task;
 	struct turn_task *ttask;
-	struct sockaddr_in *addr;
 
 	ta = (struct pack_turn_assign *)pkt;
 
@@ -150,10 +164,9 @@ static task_t *turn_task_assign_handle(struct pack_task_assign *pkt)
 	ttask->cli_count = ta->cli_count;
 
 	for(i=0; i<ta->cli_count; i++) {
-		ttask->tuple[i] = ta->tuple[i];
-
-		addr = (struct sockaddr_in *)&(ttask->tuple[i].addr);
-		addr->sin_port = htons(CLIENT_TASK_PORT); /* XXX */
+		ttask->cli[i].userid = ta->tuple[i].userid;
+		ttask->cli[i].addr = *((struct sockaddr_in *)&ta->tuple[i].addr);
+		ttask->cli[i].state = STATE_PENDING;
 	}
 
 	return task;
@@ -175,7 +188,6 @@ static int turn_task_control_handle(task_t *task, int opt, struct pack_task_cont
 	int i;
 	struct pack_turn_control *tc;
 	struct turn_task *ttask;
-	struct sockaddr_in *addr;
 
 	tc = (struct pack_turn_control *)pkt;
 	ttask = (struct turn_task *)&task->priv_data;
@@ -185,15 +197,15 @@ static int turn_task_control_handle(task_t *task, int opt, struct pack_task_cont
 			if(ttask->cli_count >= GROUP_MAX_USER)
 				return -EINVAL;
 
-			ttask->tuple[ttask->cli_count] = tc->tuple;
-			addr = (struct sockaddr_in *)&(ttask->tuple[ttask->cli_count].addr);
-			addr->sin_port = htons(CLIENT_TASK_PORT); /* XXX */
+			ttask->cli[ttask->cli_count].userid = tc->tuple.userid;
+			ttask->cli[ttask->cli_count].addr = *((struct sockaddr_in *)&tc->tuple.addr);
+			ttask->cli[ttask->cli_count].state = STATE_PENDING;
 			ttask->cli_count++;
 			break;
 		case TURN_TYPE_USER_LEAVE:
 			for(i=0; i<ttask->cli_count; i++) {
-				if(ttask->tuple[i].userid == tc->tuple.userid) {
-					ttask->tuple[i] = ttask->tuple[--ttask->cli_count];
+				if(ttask->cli[i].userid == tc->tuple.userid) {
+					ttask->cli[i] = ttask->cli[--ttask->cli_count];
 					break;
 				}
 			}
@@ -204,6 +216,7 @@ static int turn_task_control_handle(task_t *task, int opt, struct pack_task_cont
 
 	return 0;
 }
+
 /*
 int init_turn_task_assign_response(task_t *task, struct pack_task_base *pkt)
 {
@@ -219,7 +232,7 @@ int init_turn_task_assign_response(task_t *task, struct pack_task_base *pkt)
 */
 
 
-static int turn_task_handle(task_t *task, struct pack_task_req *pack)
+static int turn_task_handle(task_t *task, struct pack_task_req *pack, void *from)
 {
 	int i;
 	void *data;
@@ -229,12 +242,25 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 
 	for(i=0; i<ttask->cli_count; i++) {
 		struct sockaddr_in *addr;
-		if(pack->userid == ttask->tuple[i].userid)
+
+		if(pack->userid == ttask->cli[i].userid) {
+			if(ttask->cli[i].state == STATE_PENDING) {
+				struct sockaddr_in *address = (struct sockaddr_in *)from;
+
+				ttask->cli[i].state = STATE_RUNNING;
+				ttask->cli[i].addr = *address;
+				logi("client %d turn state change to running. addr:%s, port:%d\n", 
+						pack->userid, inet_ntoa(address->sin_addr), ntohs(address->sin_port));
+			}
+			continue;
+		}
+
+		if(ttask->cli[i].state != STATE_RUNNING)
 			continue;
 
-		addr = (struct sockaddr_in *)&ttask->tuple[i].addr;
+		addr = &ttask->cli[i].addr;
 
-		logd("[%d] turn pack to user:%d, addr:%s, port:%d\n", i, ttask->tuple[i].userid, 
+		logd("[%d] turn pack to user:%d, addr:%s, port:%d\n", i, ttask->cli[i].userid, 
 				inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
 
 		/* FIXME:XXX */
@@ -242,7 +268,7 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 		memcpy(data, pack->data, pack->datalen);
 
 		task_worker_pkt_sendto(task, MSG_TURN_PACK, 
-				data, pack->datalen, &(ttask->tuple[i].addr));
+				data, pack->datalen, (struct sockaddr *)&(ttask->cli[i].addr));
 	}
 
 	return 0;

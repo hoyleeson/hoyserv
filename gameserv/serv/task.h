@@ -44,7 +44,7 @@ struct task_operations {
 
 	int (*init_assign_response_pkt)(task_t *task, struct pack_task_assign_response *pkt);
 
-	int (*task_handle)(task_t *task, struct pack_task_req *pack);
+	int (*task_handle)(task_t *task, struct pack_task_req *pack, void *from);
 };
 
 static inline int default_init_assign_pkt(task_baseinfo_t *base, struct pack_task_assign *pkt)

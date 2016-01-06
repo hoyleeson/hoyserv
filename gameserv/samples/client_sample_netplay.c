@@ -45,7 +45,7 @@ int main(int argc, char **argv)
 
 
 	while(1) {
-		sprintf(buf, "test hello word.%d.\n", seq++);
+		sprintf(buf, "test hello world.%d.\n", seq++);
 		client_send_command(buf, strlen(buf));
 		sleep(1);
 	}

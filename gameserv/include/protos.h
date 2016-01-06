@@ -49,7 +49,8 @@ enum {
 
 /* client A <----------> client B */
 enum client_msg_type {
-	PACK_COMMAND = 1,
+	PACK_CHECKIN = 1,
+	PACK_COMMAND,
 	PACK_STATE_IMG,
 };
 

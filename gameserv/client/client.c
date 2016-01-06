@@ -300,6 +300,25 @@ static void task_req_pack_send(struct client *cli, void *data, int size)
 	client_pkt_send(&cli->task, MSG_TASK_REQ, p, sizeof(*p) + size);
 }
 
+
+void client_checkin(void)
+{
+	struct pack_cli_msg *p;
+	struct client *cli = &_client;
+
+	if(cli->task.taskid == INVAILD_TASKID) {
+		return;	
+	}
+
+	p = create_task_req_pack(cli, TASK_TURN);
+
+	p->type = PACK_CHECKIN;
+	p->datalen = 0;
+
+	task_req_pack_send(cli, p, sizeof(*p));
+}
+
+
 void client_send_command(void *data, int len)
 {
 	struct pack_cli_msg *p;
@@ -437,6 +456,8 @@ static void cli_pack_handle(struct pack_cli_msg *msg)
 	logd("client packet handle. type:%d\n", msg->type);
 
 	switch(msg->type) {
+		case PACK_CHECKIN:
+			break;
 		case PACK_COMMAND:
 			pack_command_handle(msg);
 			break;
@@ -514,13 +535,25 @@ static void *client_thread_handle(void *args)
 int client_task_start(void)
 {
 	int sock;
+	struct sockaddr_in addr; 	/* used for debug */
+	socklen_t addrlen = sizeof(addr); 	/* used for debug */
 	struct client *cli = &_client;
 
-	sock = socket_inaddr_any_server(CLIENT_TASK_PORT, SOCK_DGRAM);
+	sock = socket_inaddr_any_server(0, SOCK_DGRAM);
 	cli->task.nextseq = 0;
 
 	cli->task.hand = fdhandler_udp_create(sock, cli_task_handle, cli_task_close, cli);
 
+	if (getsockname(sock, (struct sockaddr*)&addr, &addrlen) < 0) {
+		close(sock);
+		return -EINVAL;
+	}
+
+	logi("communicate with node server. bind to %s, %d.\n",
+		   	inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+
+	/* report receive port */
+	client_checkin();
 	return 0;
 }
 
@@ -531,10 +564,10 @@ int client_init(const char *host, int mode, event_cb callback)
 	int sock;
     struct hostent *hp;
 	int ret;
-	struct sockaddr_in addr; 	/* used for debug */
-	socklen_t addrlen; 	/* used for debug */
-	struct client *cli = &_client;
 	pthread_t th;
+	struct sockaddr_in addr; 	/* used for debug */
+	socklen_t addrlen = sizeof(addr); 	/* used for debug */
+	struct client *cli = &_client;
 
 	init_global_thpool();
 	iohandler_init();
@@ -553,7 +586,9 @@ int client_init(const char *host, int mode, event_cb callback)
 		close(sock);
 		return -EINVAL;
 	}
-	logi("bind to %s, %d.\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+
+	logi("communicate with center server. bind to %s, %d.\n",
+		   	inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
 
 	hp = gethostbyname(host);
 	if(hp == 0){
@@ -604,7 +639,6 @@ int client_state_load(struct cli_context_state *state)
 
 void client_state_dump(struct cli_context_state *state)
 {
-	struct client *cli = &_client;
 	struct sockaddr_in *addr;
 
 	logi("client state:\n");
