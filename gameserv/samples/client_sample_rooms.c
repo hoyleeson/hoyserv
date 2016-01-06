@@ -56,7 +56,7 @@ int parse_cmds(char *line, char *argv[])
 	return nargs;
 }
 
-static void run_netplay()
+static void run_netplay(void)
 {
 	int ret;
 	int pid, w;
@@ -65,12 +65,12 @@ static void run_netplay()
 	const int open_mode = O_WRONLY;
 	struct cli_context_state state;
 
-	client_state_serialize(&state);
+	client_state_save(&state);
 
 	pid = fork();
 	if(pid == 0) {
 		char *newargv[] = { NULL, NULL };
-		char *newenviron[] = { "PATH=$PATH", "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./lib" };
+		char *newenviron[] = { "PATH=$PATH", "LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./lib", NULL };
 
 		printf("startup sample netplay.\n");
 
@@ -139,6 +139,8 @@ static int create_group(int argc, char **argv)
 		printf("create room fail.\n");
 		return -1;
 	}
+
+	printf("wait other player.\n");
 	run_netplay();
 
 	return 0;
@@ -157,10 +159,11 @@ static int list_group(int argc, char **argv)
 	struct group_description group[50];
 
 	client_list_group(0, 20, group, &res);
-	printf("room infomation:\n");
+	printf("room count:%d, infomation:\n", res);
 
 	for(i=0; i<res; i++) {
-		printf("room id:%d, room name:%s, flags:%d.\n", group->groupid, group->name, group->flags);
+		printf("room id:%d, room name:%s, flags:%d.\n", 
+				group[i].groupid, group[i].name, group[i].flags);
 	}
 	return 0;
 }
@@ -177,10 +180,11 @@ static int join_group(int argc, char **argv)
 	if(argc > 2)
 		passwd = argv[2];
 	else
-		passwd = "123456";
+		passwd = "";
 
 	client_join_group(&group, passwd);
 
+	printf("start play.\n");
 	run_netplay();
 	return 0;
 }

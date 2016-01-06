@@ -111,11 +111,13 @@ void task_worker_pkt_sendto(task_t *task, int type,
 	packet->len = len + pack_head_len();
 	packet->addr = *to;
 
+	dump_data("task worker send data", data, len);
+
 	fdhandler_pkt_submit(worker->hand, packet);
 }
 
 /*XXX*/
-static int task_req_handle(node_serv_t *ns, struct pack_task_req *pack)
+static int task_req_handle(task_worker_t *worker, struct pack_task_req *pack)
 {
 	task_t *task;
 	struct task_operations *ops;
@@ -124,25 +126,33 @@ static int task_req_handle(node_serv_t *ns, struct pack_task_req *pack)
 	if(!ops)
 		return -EINVAL;
 
-	task = find_node_serv_task(ns, pack->taskid);
-	if(!task)
+	task = hashmapGet(worker->tasks_map, (void *)pack->taskid);
+	if(!task) {
+		loge("not found task by taskid:%d.\n", pack->taskid);
 		return -EINVAL;
-
+	}
 	return ops->task_handle(task, pack);
 }
 
 
 static void task_worker_handle(void *opaque, uint8_t *data, int len, void *from)
 {
+	int ret = 0;
 	task_worker_t *worker = (task_worker_t *)opaque;
 	pack_head_t *head;
 	void *payload;
 
+	logd("task worker receive pack. len:%d\n", len);
+
 	if(data == NULL || len < sizeof(*head))
 		return;
 
+	dump_data("task worker receive data", data, len);
+
 	head = (pack_head_t *)data;
 	payload = head + 1; 
+
+	logd("pack: type:%d, seq:%d, datalen:%d\n", head->type, head->seqnum, head->datalen);
 
 	if(head->magic != SERV_MAGIC ||
 			head->version != SERV_VERSION)
@@ -152,12 +162,18 @@ static void task_worker_handle(void *opaque, uint8_t *data, int len, void *from)
 		case MSG_TASK_REQ:
 		{
 			struct pack_task_req *pack = (struct pack_task_req *)payload;
-			task_req_handle(worker->owner, pack);
+			ret = task_req_handle(worker, pack);
 			break;
 		}
 		default:
+			logw("unknown packet(%d).\n", head->type);
 			break;
 	}
+
+	if(ret) {
+		logw("task worker handle fail.(%d:%d)\n", head->type, ret);
+	}
+
 }
 
 
@@ -318,6 +334,7 @@ static void worker_add_task(task_worker_t *worker, task_t *task)
 	worker->task_count++;
 	task->worker = worker;
 
+	logd("worker add task. taskid:%d\n", task->taskid);
 	hashmapPut(worker->tasks_map, (void*)task->taskid, task);
 }
 
@@ -423,10 +440,11 @@ static void node_serv_handle(void *opaque, uint8_t *data, int len)
 			break;
 		}
 		default:
+			logw("unknown packet(%d).\n", head->type);
 			break;
 	}
 	if(ret) {
-		logw("node server handle fail.\n");
+		logw("node server handle fail.(%d:%d)\n", head->type, ret);
 	}
 }
 

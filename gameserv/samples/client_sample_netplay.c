@@ -16,6 +16,7 @@ const char *fifo_name = "/tmp/sample_fifo";
 
 int cli_callback(int event, void *arg1, void *arg2)
 {
+	printf("receive event(%d):%s, len:%d\n", event, (char *)arg1, (int)arg2);
 	return 0;
 }
 
@@ -26,6 +27,8 @@ int main(int argc, char **argv)
 	int pipe_fd = -1;  
 	int open_mode = O_RDONLY;
 	struct cli_context_state state;
+	char buf[512] = {0};
+	int seq = 0;
 
 	printf("sample netplay enter..\n");
 
@@ -34,12 +37,18 @@ int main(int argc, char **argv)
 	if(ret < 0)
 		return 0;
 	close(pipe_fd);
+	client_state_dump(&state);
 
 	client_init(DEFAULT_IP, CLI_MODE_TASK_ONLY, cli_callback);
-	client_task_start(state.userid, state.groupid, &state.addr);
+	client_state_load(&state);
+	client_task_start();
 
-	while(1)
+
+	while(1) {
+		sprintf(buf, "test hello word.%d.\n", seq++);
+		client_send_command(buf, strlen(buf));
 		sleep(1);
+	}
 
 	return 0;
 }

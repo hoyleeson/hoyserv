@@ -281,9 +281,12 @@ static int cmd_list_group_handle(cli_mgr_t *cm, struct pack_list_group *pr)
 	user_info_t *uinfo;
 	struct group_list_tmp rtmp;
 
+	logd("list group request from user:%u.\n", pr->userid);
 	uinfo = hashmapGet(cm->user_map, (void*)pr->userid);
 	if(!uinfo)
 		return -EINVAL;
+
+	logd("list group. pos:%d, count:%d.\n", pr->pos, pr->count);
 
 	rtmp.pos = pr->pos;
 	rtmp.count = pr->count;
@@ -319,6 +322,8 @@ static int cmd_join_group_handle(cli_mgr_t *cm, struct pack_join_group *pr)
 {
 	user_info_t *uinfo;
 	group_info_t *ginfo;
+
+	logd("join group request from user:%u, group:%u", pr->userid, pr->groupid);
 
 	uinfo = hashmapGet(cm->user_map, (void*)pr->userid);
 	if(!uinfo)

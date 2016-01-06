@@ -26,6 +26,7 @@ struct cli_context_state {
 	uint32_t userid;
 	uint32_t groupid;
 
+	uint32_t taskid;
 	struct sockaddr_in addr;
 };
 
@@ -47,10 +48,16 @@ void client_send_command(void *data, int len);
 void client_send_state_img(void *data, int len);
 
 int client_init(const char *host, int mode, event_cb callback);
-int client_task_start(uint32_t userid, uint32_t groupid, struct sockaddr_in *addr);
+int client_task_start(void);
 
-int client_state_serialize(struct cli_context_state *state);
-int client_state_deserialize(void *data, struct cli_context_state *state);
+/* state: out argument. */
+int client_state_save(struct cli_context_state *state);
+
+/* state: in argument. */
+int client_state_load(struct cli_context_state *state);
+
+/* used for debug. */
+void client_state_dump(struct cli_context_state *state);
 
 enum {
 	EVENT_NONE,

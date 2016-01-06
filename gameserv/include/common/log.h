@@ -42,7 +42,7 @@ static inline void dump_data(const char *desc, void *data, int len)
 	int i;
 	uint8_t *p = (uint8_t *)data;
 
-	logd("(%s) dump data:\n", desc);
+	logd("[%s]dump data(%d):\n", desc, len);
 	for(i=0; i<len; i++) {
 		if((i % 16) == 0)
 			logd("\n");

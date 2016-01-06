@@ -14,7 +14,9 @@
 #include <common/iohandler.h>
 #include <common/log.h>
 #include <common/utils.h>
+#include <common/thr_pool.h>
 
+#define USE_THREAD_POOLS 	(1)
 
 struct iohandler {
 	looper_t         looper;
@@ -148,7 +150,6 @@ void looper_enable(looper_t*  l, int  fd, int  events)
         ev.events   = hook->wanted;
         ev.data.ptr = hook;
 
-		printf("----%s:%d---\n", __func__, __LINE__);
         epoll_ctl(l->epoll_fd, EPOLL_CTL_MOD, fd, &ev);
     }
 }
@@ -196,7 +197,6 @@ int looper_exec(looper_t* l) {
 
 	do {
 		count = epoll_wait(l->epoll_fd, l->events, l->num_fds, -1);
-		printf("----%s:%d-%d:%d--\n", __func__, __LINE__, count, errno );
 	} while (count < 0 && errno == EINTR);
 
 	if (count < 0) {
@@ -209,7 +209,6 @@ int looper_exec(looper_t* l) {
 		return 0;
 	}
 
-		printf("----%s:%d---\n", __func__, __LINE__);
 	/* mark all pending hooks */
 	for (n = 0; n < count; n++) {
 		loop_hook_t*  hook = l->events[n].data.ptr;
@@ -290,15 +289,49 @@ static void packet_free(packet_t*  *ppacket)
 }
 
 
+struct handler_job_arg
+{
+	receiver_t *recv;
+	packet_t *pkt;
+};
+
+
+static inline void __receiver_post(receiver_t*  r, packet_t* p)
+{
+	if (r->post)
+		r->post(r, p);
+	else
+		packet_free(&p);
+}
+
+static void *receiver_handle(void *arg)
+{
+	struct handler_job_arg *job = (struct handler_job_arg *)arg;
+
+	__receiver_post(job->recv, job->pkt);
+
+	free(job);
+	return 0;
+}
+
+
 /* handle a packet to a receiver. Note that this transfers
  * ownership of the packet to the receiver.
  */
-static __inline__ void receiver_post(receiver_t*  r, packet_t*  p)
+static void receiver_post(receiver_t*  r, packet_t*  p)
 {
-    if (r->post)
-        r->post(r, p);
-	else
-		packet_free(&p);
+	struct handler_job_arg *arg;
+	thr_pool_t * thpool;
+
+	if(!USE_THREAD_POOLS)
+		return __receiver_post(r, p);
+
+	arg = malloc(sizeof(struct handler_job_arg));
+	arg->recv = r;
+	arg->pkt = p;
+
+	thpool = get_global_thpool();
+	thr_pool_queue(thpool, receiver_handle, arg);
 }
 
 /* tell a receiver the packet source was closed.
@@ -420,7 +453,6 @@ static void fdhandler_enqueue(fdhandler_t*  f, packet_t*  p)
     if (first == NULL) {
         f->out_pos = 0;
         looper_enable(f->list->looper, f->fd, EPOLLOUT);
-		printf("----%s:%d---\n", __func__, __LINE__);
     }
 }
 
@@ -511,7 +543,6 @@ static int fdhandler_write(fdhandler_t*  f)
 	packet_t*  p = f->out_first;
 	avail = p->len - f->out_pos;
 
-		printf("----%s:%d---\n", __func__, __LINE__);
 	switch(f->type) {
 		case HANDLER_TYPE_UDP:
 			len = sendto(f->fd, p->data + f->out_pos, avail, 0, 
@@ -554,7 +585,6 @@ out:
 /* fdhandler_t file descriptor event callback for read/write ops */
 static void fdhandler_event(fdhandler_t*  f, int  events)
 {
-		printf("----%s:%d---\n", __func__, __LINE__);
     /* in certain cases, it's possible to have both EPOLLIN and
      * EPOLLHUP at the same time. This indicates that there is incoming
      * data to read, but that the connection was nonetheless closed

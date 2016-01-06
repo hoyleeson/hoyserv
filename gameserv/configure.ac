@@ -24,7 +24,7 @@ AC_PROG_LIBTOOL
 
 
 # Checks for header files.
-AC_CHECK_HEADERS([arpa/inet.h fcntl.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h sys/socket.h sys/time.h unistd.h])
+AC_CHECK_HEADERS([arpa/inet.h fcntl.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h sys/ioctl.h sys/socket.h sys/time.h unistd.h])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STDBOOL
@@ -38,7 +38,7 @@ AC_TYPE_UINT8_T
 
 # Checks for library functions.
 AC_FUNC_MALLOC
-AC_CHECK_FUNCS([clock_gettime gethostbyname gettimeofday inet_ntoa memset socket strerror])
+AC_CHECK_FUNCS([bzero clock_gettime gethostbyname gettimeofday inet_ntoa memset mkfifo socket strerror])
 
 AC_CHECK_LIB(pthread, pthread_create) 
 

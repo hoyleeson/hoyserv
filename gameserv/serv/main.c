@@ -66,7 +66,7 @@ static void init_task_protocals(void)
 	task_protos_init();
 	for(i=0; i<ARRAY_SIZE(task_protos); i++) {
 		ret = task_protos[i].init();
-		logi("init protos %s %s.\n", task_protos[i].desc, ret ? "success":"fail");
+		logi("init protos %s %s.\n", task_protos[i].desc, ret ? "fail":"success");
 	}
 }
 
@@ -95,6 +95,9 @@ int main(int argc, char **argv)
 	}
 
 	logi("server running. mode=%d\n", mode);
+
+	init_global_thpool();
+
 	iohandler_init();
 	init_task_protocals();
 

@@ -97,7 +97,7 @@ void post_response_data(response_wait_t *wait, int type, int seq,
 	if(!expect)
 		return;
 
-	if((expect->count == 0) && 
+	if((expect->count == 0) || 
 			(expect->count != 0 && expect->count > count))
 		expect->count = count;
 

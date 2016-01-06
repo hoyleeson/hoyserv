@@ -185,9 +185,10 @@ static int turn_task_control_handle(task_t *task, int opt, struct pack_task_cont
 			if(ttask->cli_count >= GROUP_MAX_USER)
 				return -EINVAL;
 
-			ttask->tuple[ttask->cli_count++] = tc->tuple;
-			addr = (struct sockaddr_in *)&(ttask->tuple[i].addr);
+			ttask->tuple[ttask->cli_count] = tc->tuple;
+			addr = (struct sockaddr_in *)&(ttask->tuple[ttask->cli_count].addr);
 			addr->sin_port = htons(CLIENT_TASK_PORT); /* XXX */
+			ttask->cli_count++;
 			break;
 		case TURN_TYPE_USER_LEAVE:
 			for(i=0; i<ttask->cli_count; i++) {
@@ -226,12 +227,19 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack)
 
 	ttask = (struct turn_task *)&task->priv_data;
 
-	data = task_worker_pkt_alloc(task); /* XXX */
-	memcpy(data, pack->data, pack->datalen);
-
 	for(i=0; i<ttask->cli_count; i++) {
+		struct sockaddr_in *addr;
 		if(pack->userid == ttask->tuple[i].userid)
 			continue;
+
+		addr = (struct sockaddr_in *)&ttask->tuple[i].addr;
+
+		logd("[%d] turn pack to user:%d, addr:%s, port:%d\n", i, ttask->tuple[i].userid, 
+				inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
+
+		/* FIXME:XXX */
+		data = task_worker_pkt_alloc(task); 
+		memcpy(data, pack->data, pack->datalen);
 
 		task_worker_pkt_sendto(task, MSG_TURN_PACK, 
 				data, pack->datalen, &(ttask->tuple[i].addr));
