@@ -14,9 +14,20 @@
 
 const char *fifo_name = "/tmp/sample_fifo";
 
+int running = 0;
 int cli_callback(int event, void *arg1, void *arg2)
 {
 	printf("receive event(%d):%s, len:%d\n", event, (char *)arg1, (int)arg2);
+	switch(event) {
+		case EVENT_CHECKIN:
+			running = 1;
+			break;
+		case EVENT_COMMAND:
+			running = 1; /*XXX*/
+			break;
+		default:
+			break;
+	}
 	return 0;
 }
 
@@ -45,6 +56,13 @@ int main(int argc, char **argv)
 
 
 	while(1) {
+		if(running == 0) {
+			printf(".");
+			fflush(stdout);
+			sleep(1);
+			continue;
+		}
+
 		sprintf(buf, "test hello world.%d.\n", seq++);
 		client_send_command(buf, strlen(buf));
 		sleep(1);

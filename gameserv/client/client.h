@@ -69,6 +69,8 @@ enum {
 	/* arg1: void *, receive state image.
 	 * arg2: int, image length. */
 	EVENT_STATE_IMG,
+
+	EVENT_CHECKIN,
 };
 
 

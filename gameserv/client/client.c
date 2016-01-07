@@ -435,6 +435,17 @@ static void cli_msg_close(void *user)
 {
 }
 
+static void pack_checkin_handle(struct pack_cli_msg *msg) 
+{
+	int ret;
+	struct client *cli = &_client;
+	
+	ret = cli->callback(EVENT_CHECKIN, (void *)msg->data, (void *)msg->datalen);
+	if(ret) {
+		loge("client EVENT_CHECKIN handle fail.\n");	
+	}
+}
+
 static void pack_command_handle(struct pack_cli_msg *msg) 
 {
 	int ret;
@@ -442,13 +453,22 @@ static void pack_command_handle(struct pack_cli_msg *msg)
 	
 	ret = cli->callback(EVENT_COMMAND, (void *)msg->data, (void *)msg->datalen);
 	if(ret) {
-		loge("client handle fail.\n");	
+		loge("client EVENT_COMMAND handle fail.\n");	
 	}
 }
 
 static void pack_state_img_handle(struct pack_cli_msg *msg) 
 {
-	/*XXX*/
+	/*XXX defrag. */
+
+	int ret;
+	struct client *cli = &_client;
+	
+	ret = cli->callback(EVENT_STATE_IMG, (void *)msg->data, (void *)msg->datalen);
+	if(ret) {
+		loge("client EVENT_STATE_IMG handle fail.\n");	
+	}
+
 }
 
 static void cli_pack_handle(struct pack_cli_msg *msg) 
@@ -457,6 +477,7 @@ static void cli_pack_handle(struct pack_cli_msg *msg)
 
 	switch(msg->type) {
 		case PACK_CHECKIN:
+			pack_checkin_handle(msg);
 			break;
 		case PACK_COMMAND:
 			pack_command_handle(msg);
