@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <semaphore.h>
+#include <pthread.h>
+
 #include <common/hashmap.h>
 
 #define HASH_WAIT_OBJ_DEFAULT_CAPACITY  	(256)
@@ -31,6 +33,7 @@ struct response_node {
 
 typedef struct _response_wait {
 	Hashmap *hash;
+	pthread_mutex_t lock;
 } response_wait_t;
 
 
@@ -52,7 +55,9 @@ void post_response_data(response_wait_t *wait, int type, int seq,
 		typeof(*(_resp)) *dst; 			\
 						\
 		key = (uint64_t)(_type)<< 32 | (_seq); 	\
+		pthread_mutex_lock(&(_wait)->lock); 		\
 		expect = hashmapGet((_wait)->hash, &key); \
+		pthread_mutex_unlock(&(_wait)->lock); 	\
 		if(!expect) {	\
 			ret = -EINVAL; 	\
 			break; 		\

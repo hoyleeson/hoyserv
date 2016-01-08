@@ -66,6 +66,7 @@ struct client {
 
 	struct client_peer control; 	/* connect with center serv, taskid is invaild */
 	struct client_peer task;
+	pthread_mutex_t lock;
 };
 
 static struct client _client;
@@ -81,6 +82,18 @@ static void *client_pkt_alloc(struct client_peer *peer)
 
 }
 
+static int get_pkt_seq(struct client_peer *peer)
+{
+	int seq;
+	struct client *cli = &_client;
+
+	pthread_mutex_lock(&cli->lock);
+	seq = peer->nextseq++;
+	pthread_mutex_unlock(&cli->lock);
+
+	return seq;
+}
+
 static void client_pkt_send(struct client_peer *peer, int type, void *data, int len)
 {
 	packet_t *packet;
@@ -91,7 +104,7 @@ static void client_pkt_send(struct client_peer *peer, int type, void *data, int 
 
 	/* init header */
 	init_pack(head, type, len);
-	head->seqnum = peer->nextseq++;
+	head->seqnum = get_pkt_seq(peer);
 
 	packet->len = len + pack_head_len();
 	packet->addr = *((struct sockaddr*)&peer->serv_addr);
@@ -110,6 +123,9 @@ int client_login(void)
 	int userid;
 	void *data;
 	struct client *cli = &_client;
+
+	if(!cli->running)
+		return -EINVAL;
 
 	data = client_pkt_alloc(&cli->control);
 
@@ -130,6 +146,9 @@ void client_logout(void)
 	uint32_t *userid;
 	struct client *cli = &_client;
 
+	if(!cli->running)
+		return -EINVAL;
+
 	userid = (uint32_t *)client_pkt_alloc(&cli->control);
 
 	*userid = cli->userid;
@@ -144,6 +163,9 @@ int client_create_group(int open, const char *name, const char *passwd)
 	struct client *cli = &_client;
 	struct pack_creat_group *p;
 	struct pack_creat_group_result result;
+
+	if(!cli->running)
+		return -EINVAL;
 
 	p = (struct pack_creat_group *)client_pkt_alloc(&cli->control);
 
@@ -182,6 +204,9 @@ void client_delete_group(void)
 	struct pack_del_group *p;
 	struct client *cli = &_client;
 
+	if(!cli->running)
+		return -EINVAL;
+
 	p = (struct pack_del_group *)client_pkt_alloc(&cli->control);
 
 	p->userid = cli->userid;
@@ -199,6 +224,9 @@ int client_list_group(int pos, int count, struct group_description *gres, int *r
 	int retlen, ofs = 0;
 	struct group_description *gp = gres;
 	struct client *cli = &_client;
+
+	if(!cli->running)
+		return -EINVAL;
 
 	p = (struct pack_list_group *)client_pkt_alloc(&cli->control);
 
@@ -242,6 +270,9 @@ int client_join_group(struct group_description *group, const char *passwd)
 	struct client *cli = &_client;
 	struct pack_creat_group_result result;
 
+	if(!cli->running)
+		return -EINVAL;
+
 	p = (struct pack_join_group *)client_pkt_alloc(&cli->control);
 
 	p->userid = cli->userid;
@@ -269,6 +300,9 @@ void client_leave_group(void)
 {
 	struct pack_join_group *p;
 	struct client *cli = &_client;
+
+	if(!cli->running)
+		return -EINVAL;
 
 	p = (struct pack_join_group *)client_pkt_alloc(&cli->control);
 
@@ -597,7 +631,7 @@ int client_init(const char *host, int mode, event_cb callback)
 
 	cli->callback = callback;
 	cli->mode = mode;
-	cli->running = 1;
+	pthread_mutex_init(&cli->lock, NULL);
 
 /*	if(mode == CLI_MODE_CONTROL_ONLY || mode == CLI_MODE_TASK_ONLY) { */
 	/* dynamic alloc port by system. */
@@ -626,6 +660,8 @@ int client_init(const char *host, int mode, event_cb callback)
 
 	cli->control.hand = fdhandler_udp_create(sock,
 			cli_msg_handle, cli_msg_close, cli);
+
+	cli->running = 1;
 /*	} */
 
 	ret = pthread_create(&th, NULL, client_thread_handle, cli);

@@ -42,6 +42,7 @@ int wait_obj_destory(wait_obj_t *wait)
 	return sem_destroy(&wait->sem);
 }
 
+
 static int int64_hash(void *key)
 {
 	return hashmapHash(key, sizeof(uint64_t));
@@ -57,10 +58,10 @@ static bool int64_equals(void* keyA, void* keyB)
 
 int response_wait_init(response_wait_t *wait, int capacity)
 {
+	pthread_mutex_init(&wait->lock, NULL);
 	wait->hash = hashmapCreate(capacity, int64_hash, int64_equals);
 	return 0;
 }
-
 
 int wait_for_response_data(response_wait_t *wait, int type, int seq,
 	   	void *response, int *count)
@@ -75,13 +76,18 @@ int wait_for_response_data(response_wait_t *wait, int type, int seq,
 
 	wait_obj_init(&expect.wait);
 
+	pthread_mutex_lock(&wait->lock);
 	hashmapPut(wait->hash, &expect.key, &expect);
+	pthread_mutex_unlock(&wait->lock);
+
 	ret = wait_for_obj_timeout(&expect.wait, WAIT_PACKET_TIMEOUT_MS);
 	
 	if(count != NULL)
 		*count = expect.count;
 
+	pthread_mutex_lock(&wait->lock);
 	hashmapRemove(wait->hash, &expect.key);
+	pthread_mutex_unlock(&wait->lock);
 	return ret;
 }
 
@@ -93,7 +99,10 @@ void post_response_data(response_wait_t *wait, int type, int seq,
 	struct response_node *expect;
 
 	key = (uint64_t)type << 32 | seq;
+
+	pthread_mutex_lock(&wait->lock);
 	expect = hashmapGet(wait->hash, &key);
+	pthread_mutex_unlock(&wait->lock);
 	if(!expect)
 		return;
 
@@ -120,7 +129,10 @@ void post_response(response_wait_t *wait, int type, int seq, void *response,
 	struct response_node *expect;
 
 	key = (uint64_t)type << 32 | seq;
+
+	pthread_mutex_lock(&wait->lock);
 	expect = hashmapGet(wait->hash, &key);
+	pthread_mutex_unlock(&wait->lock);
 	if(!expect)
 		return;
 

@@ -67,11 +67,15 @@ typedef struct {
 /* looper_t is the main object modeling a looper object
  */
 typedef struct {
-    int                  epoll_fd;
-    int                  num_fds;
-    int                  max_fds;
-    struct epoll_event*  events;
-    loop_hook_t*            hooks;
+	int epoll_fd;
+	int num_fds;
+	int max_fds;
+
+	loop_hook_t*       	hooks;
+	struct epoll_event* events;
+	int ctl_socks[2];
+
+	pthread_mutex_t 	lock;
 } looper_t;
 
 
@@ -166,20 +170,19 @@ enum fdhandler_type {
 };
 
 struct fdhandler {
-    int             fd;
     fdhandler_list_t*  list;
-    char            closing;
-    receiver_t        receiver[1];
+    int    	fd;
+	int 	type;
+    char    closing;
+    receiver_t receiver[1];
 
     /* queue of outgoing packets */
-    int             out_pos;
-    packet_t*         out_first;
-    packet_t**        out_ptail;
+    packet_t*     out_first;
+    packet_t**    out_ptail;
 
-    fdhandler_t*      next;
-    fdhandler_t**     pref;
-
-	int type;
+    fdhandler_t*    next;
+    fdhandler_t**   pref;
+	pthread_mutex_t lock;
 };
 
 struct fdhandler_list {
@@ -196,6 +199,7 @@ struct fdhandler_list {
      */
     fdhandler_t*   closing;
 
+	pthread_mutex_t lock;
 };
 
 
@@ -217,8 +221,8 @@ fdhandler_t* fdhandler_udp_create(int fd, handlefrom_func hand_fn, close_func cl
 fdhandler_t* fdhandler_accept_create(int fd, accept_func accept_fn, close_func close_fn, void *data);
 
 unsigned long iohandler_init(void);
-void iohandler_once();
-void iohandler_loop();
+void iohandler_once(void);
+void iohandler_loop(void);
 
 #endif
 

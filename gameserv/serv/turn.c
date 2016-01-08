@@ -80,7 +80,7 @@ static int init_turn_task_assign(task_baseinfo_t *base,
 		return -EINVAL;
 
 	ta = (struct pack_turn_assign *)pkt;
-	len = sizeof(*ta) + sizeof(client_tuple_t)*ta->cli_count;
+	len = sizeof(*ta) + sizeof(client_tuple_t)*group->users;
 
 	ta->groupid = group->groupid;
 	ta->cli_count = group->users;

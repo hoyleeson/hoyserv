@@ -15,7 +15,7 @@ static center_serv_t center_serv;
 
 int center_serv_init(void) 
 {
-	logi("center server start.");
+	logi("center server start.\n");
 	center_serv_t *cs = &center_serv;
 
 	cs->nodemgr = node_mgr_init();

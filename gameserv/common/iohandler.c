@@ -25,41 +25,113 @@ struct iohandler {
 
 static struct iohandler _iohandler; 
 
+enum loop_ev_opt {
+	EV_LOOPER_ADD,
+	EV_LOOPER_DEL,
+	EV_LOOPER_ENABLE,
+	EV_LOOPER_DISABLE,
+};
 
-/* initialize a looper object */
-void looper_init(looper_t*  l)
+typedef struct {
+	int opt;
+	int fd;
+
+	union {
+		struct {
+			void* ev_user;
+			event_fn ev_func;
+		} ev; /* used for looper add */
+		int events; 		/* used for looper enable / disable */
+	}
+} loop_ctl_t;
+
+
+static inline void looper_ctl_submit(looper_t* l, void *data, int len)
 {
-    l->epoll_fd = epoll_create(1);
-    l->num_fds  = 0;
-    l->max_fds  = 0;
-    l->events   = NULL;
-    l->hooks    = NULL;
+	int ret;
+
+	pthread_mutex_lock(&l->lock);
+	ret = fd_write(l->ctl_socks[0], data, len);
+	if(ret < 0)
+		loge("looper ctl command submit fail.\n");
+	pthread_mutex_unlock(&l->lock);
 }
 
-/* finalize a looper object */
-void looper_done(looper_t*  l)
+/* register a file descriptor and its event handler.
+ * no event mask will be enabled
+ */
+void looper_add(looper_t*  l, int  fd, event_fn  func, void*  user)
 {
-    xfree(l->events);
-    xfree(l->hooks);
-    l->max_fds = 0;
-    l->num_fds = 0;
+	loop_ctl_t ctl;
 
-    close(l->epoll_fd);
-    l->epoll_fd  = -1;
+	ctl.opt = EV_LOOPER_ADD;
+	ctl.fd = fd;
+
+    ctl.ev.ev_user = user;
+    ctl.ev.ev_func = func;
+
+	looper_ctl_submit(l, &ctl, sizeof(ctl));
 }
+
+/* unregister a file descriptor and its event handler
+ */
+void looper_del(looper_t*  l, int  fd)
+{
+	loop_ctl_t ctl;
+
+	ctl.opt = EV_LOOPER_DEL;
+	ctl.fd = fd;
+
+	looper_ctl_submit(l, &ctl, sizeof(ctl));
+}
+
+/* enable monitoring of certain events for a file
+ * descriptor. This adds 'events' to the current
+ * event mask
+ */
+void looper_enable(looper_t*  l, int  fd, int  events)
+{
+	loop_ctl_t ctl;
+
+	ctl.opt = EV_LOOPER_ENABLE;
+	ctl.fd = fd;
+	ctl.events = events;
+
+	looper_ctl_submit(l, &ctl, sizeof(ctl));
+}
+
+/* disable monitoring of certain events for a file
+ * descriptor. This ignores events that are not
+ * currently enabled.
+ */
+void looper_disable(looper_t*  l, int  fd, int  events)
+{
+	loop_ctl_t ctl;
+
+	ctl.opt = EV_LOOPER_DISABLE;
+	ctl.fd = fd;
+	ctl.events = events;
+
+	looper_ctl_submit(l, &ctl, sizeof(ctl));
+}
+
 
 /* return the loop_hook_t corresponding to a given
  * monitored file descriptor, or NULL if not found
  */
 loop_hook_t* looper_find(looper_t*  l, int  fd)
 {
-    loop_hook_t*  hook = l->hooks;
-    loop_hook_t*  end  = hook + l->num_fds;
+    loop_hook_t*  hook;
+    loop_hook_t*  end;
+
+	hook = l->hooks;
+	end = hook + l->num_fds;
 
     for (; hook < end; hook++) {
         if (hook->fd == fd)
             return hook;
     }
+
     return NULL;
 }
 
@@ -88,7 +160,7 @@ void looper_grow(looper_t*  l)
 /* register a file descriptor and its event handler.
  * no event mask will be enabled
  */
-void looper_add(looper_t*  l, int  fd, event_fn  func, void*  user)
+static void looper_ctl_add(looper_t*  l, int  fd, event_fn  func, void*  user)
 {
     struct epoll_event  ev;
     loop_hook_t*           hook;
@@ -97,6 +169,7 @@ void looper_add(looper_t*  l, int  fd, event_fn  func, void*  user)
         looper_grow(l);
 
     hook = l->hooks + l->num_fds;
+    l->num_fds += 1;
 
     hook->fd      = fd;
     hook->ev_user = user;
@@ -110,13 +183,11 @@ void looper_add(looper_t*  l, int  fd, event_fn  func, void*  user)
     ev.events   = 0;
     ev.data.ptr = hook;
     epoll_ctl(l->epoll_fd, EPOLL_CTL_ADD, fd, &ev);
-
-    l->num_fds += 1;
 }
 
 /* unregister a file descriptor and its event handler
  */
-void looper_del(looper_t*  l, int  fd)
+static void looper_ctl_del(looper_t*  l, int  fd)
 {
     loop_hook_t*  hook = looper_find(l, fd);
 
@@ -134,7 +205,7 @@ void looper_del(looper_t*  l, int  fd)
  * descriptor. This adds 'events' to the current
  * event mask
  */
-void looper_enable(looper_t*  l, int  fd, int  events)
+static void looper_ctl_enable(looper_t*  l, int  fd, int  events)
 {
     loop_hook_t*  hook = looper_find(l, fd);
 
@@ -158,7 +229,7 @@ void looper_enable(looper_t*  l, int  fd, int  events)
  * descriptor. This ignores events that are not
  * currently enabled.
  */
-void looper_disable(looper_t*  l, int  fd, int  events)
+static void looper_ctl_disable(looper_t*  l, int  fd, int  events)
 {
     loop_hook_t*  hook = looper_find(l, fd);
 
@@ -178,6 +249,46 @@ void looper_disable(looper_t*  l, int  fd, int  events)
     }
 }
 
+
+static void looper_ctl_handle(looper_t *l, void *data, int len)
+{
+	loop_ctl_t *ctl;
+
+	ctl = (loop_ctl_t *)data;
+
+	switch(ctl->opt) {
+		case EV_LOOPER_ADD:
+			looper_ctl_add(l, ctl->fd, ctl->ev.ev_func, ctl->ev.ev_user);
+			break;
+		case EV_LOOPER_DEL:
+			looper_ctl_del(l, ctl->fd);
+			break;
+		case EV_LOOPER_ENABLE:
+			looper_ctl_enable(l, ctl->fd, ctl->events);
+			break;
+		case EV_LOOPER_DISABLE:
+			looper_ctl_disable(l, ctl->fd, ctl->events);
+			break;
+	}
+}
+
+static void looper_ctl_event(looper_t *l, int events)
+{
+	char data[MAX_PAYLOAD] = {0};
+	int len;
+
+	if(!(events & EPOLLIN)) {
+		return;
+	}
+
+	len = fd_read(l->ctl_socks[1], data, MAX_PAYLOAD);
+	if(len < 0)
+		return;
+
+	looper_ctl_handle(l, data, len);
+}
+
+
 /* wait until an event occurs on one of the registered file
  * descriptors. Only returns in case of error !!
  */
@@ -191,9 +302,9 @@ void looper_loop(looper_t*  l)
     }
 }
 
-
 int looper_exec(looper_t* l) {
-	int  n, count;
+	int n, count;
+	loop_hook_t* hook;
 
 	do {
 		count = epoll_wait(l->epoll_fd, l->events, l->num_fds, -1);
@@ -211,15 +322,15 @@ int looper_exec(looper_t* l) {
 
 	/* mark all pending hooks */
 	for (n = 0; n < count; n++) {
-		loop_hook_t*  hook = l->events[n].data.ptr;
+		hook = l->events[n].data.ptr;
 		hook->state  = HOOK_PENDING;
 		hook->events = l->events[n].events;
 	}
 
 	/* execute hook callbacks. this may change the 'hooks'
 	 * and 'events' array, as well as l->num_fds, so be careful */
-	for (n = 0; n < l->num_fds; n++) {
-		loop_hook_t*  hook = l->hooks + n;
+	for (n = 1; n < l->num_fds; n++) {
+		hook = l->hooks + n;
 		if (hook->state & HOOK_PENDING) {
 			hook->state &= ~HOOK_PENDING;
 			hook->ev_func(hook->ev_user, hook->events);
@@ -228,9 +339,9 @@ int looper_exec(looper_t* l) {
 
 	/* now remove all the hooks that were closed by
 	 * the callbacks */
-	for (n = 0; n < l->num_fds;) {
+	for (n = 1; n < l->num_fds;) {
 		struct epoll_event ev;
-		loop_hook_t*  hook = l->hooks + n;
+		hook = l->hooks + n;
 
 		if (!(hook->state & HOOK_CLOSING)) {
 			n++;
@@ -243,24 +354,86 @@ int looper_exec(looper_t* l) {
 		ev.data.ptr = hook;
 		epoll_ctl(l->epoll_fd, EPOLL_CTL_MOD, hook->fd, &ev);
 	}
+
+	/* manage hook. */
+	hook = l->hooks;
+	if (hook->state & HOOK_PENDING) {
+		hook->state &= ~HOOK_PENDING;
+		hook->ev_func(hook->ev_user, hook->events);
+	}
+
 	return 0;
 }
+
+
+/* initialize a looper object */
+void looper_init(looper_t*  l)
+{
+	int ret; 
+	int size = MAX_PAYLOAD;
+    l->epoll_fd = epoll_create(1);
+    l->num_fds  = 0;
+    l->max_fds  = 0;
+    l->events   = NULL;
+    l->hooks    = NULL;
+
+	pthread_mutex_init(&l->lock, NULL);
+
+	ret = socketpair(AF_UNIX, SOCK_DGRAM, 0, l->ctl_socks);
+	if (ret < 0) {
+		loge("Error in pipe() errno:%d", errno);
+		return;
+	}
+
+	loge("Create pipe() :%d:%d", l->ctl_socks[0], l->ctl_socks[1]);
+	setsockopt(l->ctl_socks[0], SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+	setsockopt(l->ctl_socks[1], SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
+	setsockopt(l->ctl_socks[0], SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
+	setsockopt(l->ctl_socks[1], SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+	fcntl(l->ctl_socks[0], F_SETFL, O_NONBLOCK);
+	fcntl(l->ctl_socks[1], F_SETFL, O_NONBLOCK);
+
+	looper_ctl_add(l, l->ctl_socks[1], (event_fn)looper_ctl_event, l);
+    looper_ctl_enable(l, l->ctl_socks[1], EPOLLIN);
+}
+
+/* finalize a looper object */
+void looper_done(looper_t*  l)
+{
+    xfree(l->events);
+    xfree(l->hooks);
+    l->max_fds = 0;
+    l->num_fds = 0;
+
+    close(l->epoll_fd);
+    l->epoll_fd  = -1;
+}
+
+
+/**********************************************************************/
+
 
 /* we expect to alloc/free a lot of packets during
  * operations so use a single linked list of free packets
  * to keep things speedy and simple.
  */
 static packet_t*   _free_packets;
+static pthread_mutex_t packets_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Allocate a packet */
 static packet_t* packet_alloc(void)
 {
-    packet_t*  p = _free_packets;
+    packet_t*  p;
+   
+	pthread_mutex_lock(&packets_lock);
+	p = _free_packets;
     if (p != NULL) {
         _free_packets = p->next;
     } else {
         xnew(p);
     }
+	pthread_mutex_unlock(&packets_lock);
+
     p->next    = NULL;
     p->len     = 0;
     p->channel = 0;
@@ -280,20 +453,16 @@ static packet_t* packet_get(packet_t* p)
  */
 static void packet_free(packet_t*  *ppacket)
 {
-    packet_t*  p = *ppacket;
+	pthread_mutex_lock(&packets_lock);
+    packet_t* p = *ppacket;
     if (p) {
         p->next       = _free_packets;
         _free_packets = p;
         *ppacket = NULL;
     }
+
+	pthread_mutex_unlock(&packets_lock);
 }
-
-
-struct handler_job_arg
-{
-	receiver_t *recv;
-	packet_t *pkt;
-};
 
 
 static inline void __receiver_post(receiver_t*  r, packet_t* p)
@@ -303,6 +472,13 @@ static inline void __receiver_post(receiver_t*  r, packet_t* p)
 	else
 		packet_free(&p);
 }
+
+
+struct handler_job_arg {
+	receiver_t *recv;
+	packet_t *pkt;
+};
+
 
 static void *receiver_handle(void *arg)
 {
@@ -334,6 +510,7 @@ static void receiver_post(receiver_t*  r, packet_t*  p)
 	thr_pool_queue(thpool, receiver_handle, arg);
 }
 
+
 /* tell a receiver the packet source was closed.
  * this will also prevent further handleing to the
  * receiver.
@@ -351,19 +528,29 @@ static __inline__ void receiver_close(receiver_t*  r)
 /* remove a fdhandler_t from its current list */
 void fdhandler_remove(fdhandler_t*  f)
 {
+    fdhandler_list_t*  list = f->list;
+
+	pthread_mutex_lock(&list->lock);
     f->pref[0] = f->next;
     if (f->next)
         f->next->pref = f->pref;
+	pthread_mutex_unlock(&list->lock);
 }
 
 /* add a fdhandler_t to a given list */
-void fdhandler_prepend(fdhandler_t*  f, fdhandler_t**  list)
+void fdhandler_prepend(fdhandler_t*  f, fdhandler_t**  l)
 {
-    f->next = list[0];
-    f->pref = list;
-    list[0] = f;
+    fdhandler_list_t*  list = f->list;
+
+	pthread_mutex_lock(&list->lock);
+
+    f->next = l[0];
+    f->pref = l;
+    l[0] = f;
     if (f->next)
         f->next->pref = &f->next;
+
+	pthread_mutex_unlock(&list->lock);
 }
 
 /* initialize a fdhandler_t list */
@@ -372,6 +559,7 @@ void fdhandler_list_init(fdhandler_list_t*  list, looper_t*  looper)
     list->looper  = looper;
     list->active  = NULL;
     list->closing = NULL;
+	pthread_mutex_init(&list->lock, NULL);
 }
 
 
@@ -444,16 +632,21 @@ void fdhandler_shutdown(fdhandler_t*  f)
  */
 static void fdhandler_enqueue(fdhandler_t*  f, packet_t*  p)
 {
-    packet_t*  first = f->out_first;
+	packet_t*  first;
+
+	pthread_mutex_lock(&f->lock);
+
+    first = f->out_first;
 
     p->next         = NULL;
     f->out_ptail[0] = p;
     f->out_ptail    = &p->next;
 
     if (first == NULL) {
-        f->out_pos = 0;
         looper_enable(f->list->looper, f->fd, EPOLLOUT);
     }
+
+	pthread_mutex_unlock(&f->lock);
 }
 
 void fdhandler_send(fdhandler_t *f, const uint8_t *data, int len) 
@@ -505,6 +698,9 @@ static int fdhandler_read(fdhandler_t*  f)
 	packet_t*  p = packet_alloc();
 
 	switch(f->type) {
+		case HANDLER_TYPE_NORMAL:
+			p->len = fd_read(f->fd, p->data, MAX_PAYLOAD);
+			break;
 		case HANDLER_TYPE_UDP:
 		{
 			struct sockaddr src_addr;
@@ -518,9 +714,6 @@ static int fdhandler_read(fdhandler_t*  f)
 			p->len = 1;
 			p->channel = fd_accept(f->fd);
 			break;
-		case HANDLER_TYPE_NORMAL:
-			p->len = fd_read(f->fd, p->data, MAX_PAYLOAD);
-			break;
 		default:
 			p->len = -1;
 			break;
@@ -531,55 +724,71 @@ static int fdhandler_read(fdhandler_t*  f)
 	
 	receiver_post(f->receiver, p);
 	return 0;
+
 fail:
 	packet_free(&p);
 	return -EINVAL;
 }
 
+static int fdhandler_write_packet(fdhandler_t* f, packet_t *p)
+{
+	int len;
+
+	switch(f->type) {
+		case HANDLER_TYPE_NORMAL:
+		{
+			int out_pos = 0;
+			int avail = 0;
+
+			while(out_pos < p->len) {
+				avail = p->len - out_pos;
+
+				len = fd_write(f->fd, p->data + out_pos, avail);
+				if(len < 0) 
+					goto fail;
+				out_pos += len;
+			}
+			break;
+		}
+		case HANDLER_TYPE_UDP:
+			len = sendto(f->fd, p->data, p->len, 0, &p->addr, sizeof(struct sockaddr));
+			if(len < 0)
+				goto fail;
+			break;
+		case HANDLER_TYPE_TCP_ACCEPT:
+		default:
+			goto fail;
+	}
+
+	return 0;
+
+fail:
+	packet_free(&p);
+	loge("send data fail, ret=%d, droped.\n", len);
+	return -EINVAL;
+}
 
 static int fdhandler_write(fdhandler_t*  f) 
 {
-	int      avail, len;
-	packet_t*  p = f->out_first;
-	avail = p->len - f->out_pos;
+	packet_t* p;
 
-	switch(f->type) {
-		case HANDLER_TYPE_UDP:
-			len = sendto(f->fd, p->data + f->out_pos, avail, 0, 
-					&p->addr, sizeof(struct sockaddr));
-			break;
-		case HANDLER_TYPE_TCP_ACCEPT:
-			goto out;
-		case HANDLER_TYPE_NORMAL:
-			len = fd_write(f->fd, p->data + f->out_pos, avail);
-			break;
-
-	}
-	if(len < 0) {
-		f->out_pos   = 0;
-		f->out_first = p->next;
-		packet_free(&p);
-		if (f->out_first == NULL) {
-			f->out_ptail = &f->out_first;
-			looper_disable(f->list->looper, f->fd, EPOLLOUT);
-		}
-		loge("send data fail, ret=%d, droped.\n", len);
-		return -EINVAL;
+	pthread_mutex_lock(&f->lock);
+	if(!f->out_first) {
+		pthread_mutex_unlock(&f->lock);
+		return 0;
 	}
 
-	f->out_pos += len;
-	if (f->out_pos >= p->len) {
-		f->out_pos   = 0;
-		f->out_first = p->next;
-		packet_free(&p);
-		if (f->out_first == NULL) {
-			f->out_ptail = &f->out_first;
-			looper_disable(f->list->looper, f->fd, EPOLLOUT);
-		}
+   	p = f->out_first;
+
+	f->out_first = p->next;
+	if (f->out_first == NULL) {
+		f->out_ptail = &f->out_first;
+		looper_disable(f->list->looper, f->fd, EPOLLOUT);
 	}
 
-out:
-	return 0;
+	pthread_mutex_unlock(&f->lock);
+
+	return fdhandler_write_packet(f, p);
 }
 
 /* fdhandler_t file descriptor event callback for read/write ops */
@@ -591,19 +800,19 @@ static void fdhandler_event(fdhandler_t*  f, int  events)
      * by the sender. Be sure to read the data before closing
      * the receiver to avoid packet loss.
      */
-    if (events & EPOLLIN) {
+    if(events & EPOLLIN) {
 		fdhandler_read(f);
     }
 
-    if (events & (EPOLLHUP|EPOLLERR)) {
+    if(events & EPOLLOUT) {
+		fdhandler_write(f);
+    }
+
+    if(events & (EPOLLHUP|EPOLLERR)) {
         /* disconnection */
         loge("%s: disconnect on fd %d", __func__, f->fd);
         fdhandler_close(f);
         return;
-    }
-
-    if (events & EPOLLOUT && f->out_first) {
-		fdhandler_write(f);
     }
 }
 
@@ -613,17 +822,18 @@ static fdhandler_t* fdhandler_new(int fd, fdhandler_list_t* list,
 {
     fdhandler_t*  f = xzalloc(sizeof(*f));
 
-    f->fd          = fd;
-    f->list        = list;
+    f->fd = fd;
+	f->type = type;
+    f->list = list;
     f->receiver[0] = receiver[0];
+
     f->out_first   = NULL;
     f->out_ptail   = &f->out_first;
-    f->out_pos     = 0;
-	f->type = type;
+	pthread_mutex_init(&f->lock, NULL);
 
     fdhandler_prepend(f, &list->active);
 
-    looper_add(list->looper, fd, (event_fn) fdhandler_event, f);
+    looper_add(list->looper, fd, (event_fn)fdhandler_event, f);
     looper_enable(list->looper, fd, EPOLLIN);
     return f;
 }
@@ -711,17 +921,18 @@ unsigned long iohandler_init(void)
 	return (unsigned long)ioh;
 }
 
-void iohandler_once() 
+void iohandler_once(void) 
 {
 	struct iohandler *ioh = &_iohandler;
 
     looper_exec(&ioh->looper);
 }
 
-void iohandler_loop() 
+void iohandler_loop(void) 
 {
 	struct iohandler *ioh = &_iohandler;
 
     looper_loop(&ioh->looper);
 }
+
 

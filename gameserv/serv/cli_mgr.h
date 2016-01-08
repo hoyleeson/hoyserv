@@ -2,6 +2,7 @@
 #define _SERV_CLI_MGR_H_
 
 #include <stdint.h>
+#include <pthread.h>
 #include <common/list.h>
 #include <common/iohandler.h>
 #include <common/hashmap.h>
@@ -57,6 +58,7 @@ typedef struct _cli_mgr {
 	node_mgr_t *node_mgr;
 	uint16_t nextseq;
 	struct listnode group_list;
+	pthread_mutex_t lock;
 } cli_mgr_t;
 
 cli_mgr_t *cli_mgr_init(node_mgr_t *nodemgr);

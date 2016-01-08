@@ -74,6 +74,80 @@ static int cli_ack_handle(cli_mgr_t *cm, uint16_t seqnum)
 	return 0;
 }
 
+static void cli_mgr_add_user(cli_mgr_t *cm, user_info_t *user) 
+{
+	pthread_mutex_lock(&cm->lock);
+	hashmapPut(cm->user_map, (void *)user->userid, user);
+	cm->user_count++;
+	pthread_mutex_unlock(&cm->lock);
+}
+
+static user_info_t *cli_mgr_del_user(cli_mgr_t *cm, uint32_t userid)
+{
+	user_info_t *user;
+
+	pthread_mutex_lock(&cm->lock);
+
+	user = hashmapRemove(cm->user_map, (void *)userid);
+	if(!user) {
+		pthread_mutex_unlock(&cm->lock);
+		return NULL;
+	}
+
+	cm->user_count--;
+
+	pthread_mutex_unlock(&cm->lock);
+	return user;
+}
+
+static user_info_t *cli_mgr_get_user(cli_mgr_t *cm, uint32_t userid)
+{
+	user_info_t *user;
+
+	pthread_mutex_lock(&cm->lock);
+	user = hashmapGet(cm->user_map, (void*)userid);
+	pthread_mutex_unlock(&cm->lock);
+	return user;
+}
+
+
+static void cli_mgr_add_group(cli_mgr_t *cm, group_info_t *group) 
+{
+	pthread_mutex_lock(&cm->lock);
+	hashmapPut(cm->group_map, (void *)group->groupid, group);
+	cm->group_count++;
+	pthread_mutex_unlock(&cm->lock);
+}
+
+static group_info_t *cli_mgr_del_group(cli_mgr_t *cm, uint32_t groupid)
+{
+	group_info_t *group;
+
+	pthread_mutex_lock(&cm->lock);
+	group = hashmapRemove(cm->group_map, (void *)groupid);
+	if(!group) {
+		pthread_mutex_unlock(&cm->lock);
+		return NULL;
+	}
+
+	cm->group_count--;
+	pthread_mutex_unlock(&cm->lock);
+
+	return group;
+}
+
+#if 0
+static user_info_t *cli_mgr_get_group(uint32_t groupid)
+{
+	user_info_t *user;
+
+	pthread_mutex_lock(&cm->lock);
+	user = hashmapGet(cm->user_map, (void*)userid);
+	pthread_mutex_unlock(&cm->lock);
+	return user;
+}
+#endif
+
 static void login_result_response(cli_mgr_t *cm, 
 		user_info_t *uinfo, struct sockaddr *to)
 {
@@ -100,8 +174,7 @@ static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
 	uinfo->state = 0;
 	uinfo->heard = HBEAT_INIT;
 
-	cm->user_count++;
-	hashmapPut(cm->user_map, (void *)uinfo->userid, uinfo);
+	cli_mgr_add_user(cm, uinfo);
 
 	logi("user login. from %s, %d, alloc userid:%u.\n", 
 			inet_ntoa(addr->sin_addr), ntohs(addr->sin_port), uinfo->userid);
@@ -114,12 +187,8 @@ static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
 static int cmd_logout_handle(cli_mgr_t *cm, uint32_t uid)
 {
 	user_info_t *uinfo;
-	uinfo = hashmapRemove(cm->user_map, (void *)uid);
-	if(!uinfo)
-		return -EINVAL;
 
-	cm->user_count--;
-
+	uinfo = cli_mgr_del_user(cm, uid);
 	if(uinfo->group != NULL) {
 		//exit_from_group(); /* XXX */
 	}
@@ -152,13 +221,14 @@ static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
 
 	logd("create group request from user:%u.\n", pr->userid);
 
-	creater = hashmapGet(cm->user_map, (void*)pr->userid);
+	creater = cli_mgr_get_user(cm, pr->userid);
 	if(!creater)
 		return -EINVAL;
 
 	ginfo = malloc(sizeof(*ginfo));
-	if(!ginfo)
+	if(!ginfo) {
 		return -EINVAL;
+	}
 
 	ginfo->groupid = cli_mgr_alloc_gid(cm);
 	ginfo->flags = pr->flags;
@@ -173,11 +243,11 @@ static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
 	ginfo->users++;
 
 	ginfo->turn_handle = turn_task_assign(cm->node_mgr, ginfo);
-	if(ginfo->turn_handle == 0)
+	if(ginfo->turn_handle == 0) {
 		goto fail;
+	}
 
-	hashmapPut(cm->group_map, (void *)ginfo->groupid, ginfo);
-	cm->group_count++;
+	cli_mgr_add_group(cm, ginfo);
 
 	create_group_response(cm, ginfo, &creater->addr);
 	return 0;
@@ -202,18 +272,17 @@ static void group_delete_notify(cli_mgr_t *cm, user_info_t *user)
 static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
 {
 	int ret;
-	group_info_t *ginfo;
 	user_info_t *creater, *user;
-
-	ginfo = hashmapRemove(cm->group_map, (void *)pr->groupid);
-	if(!ginfo)
-		return -EINVAL;
-
-	cm->group_count--;
+	group_info_t *ginfo;
+#if 0
+	/* Permission check */
 	creater = node_to_item(ginfo->userlist.next, user_info_t, node);
 	if(creater->userid != pr->userid) {
 		return -EINVAL;
 	}
+#endif
+
+	ginfo = cli_mgr_del_group(cm, pr->groupid);
 
 	list_for_each_entry(user, &ginfo->userlist, node) {
 		if(creater->userid == user->userid)
@@ -466,7 +535,7 @@ cli_mgr_t *cli_mgr_init(node_mgr_t *nodemgr)
 	int clifd;
 	cli_mgr_t *cm;
 
-	logd("clieng manager running.\n");
+	logd("client manager running.\n");
    	cm = malloc(sizeof(*cm));
 	if(!cm)
 		return NULL;
@@ -482,6 +551,7 @@ cli_mgr_t *cli_mgr_init(node_mgr_t *nodemgr)
 	cm->hand = fdhandler_udp_create(clifd, cli_mgr_handle, cli_mgr_close, cm);
 	cm->user_map = hashmapCreate(HASH_USER_CAPACITY, int_hash, int_equals);
 	cm->group_map = hashmapCreate(HASH_GROUP_CAPACITY, int_hash, int_equals);
+	pthread_mutex_init(&cm->lock, NULL);
 	return cm;
 }
 
