@@ -29,13 +29,14 @@ typedef struct _node_serv  node_serv_t;
 /* ns: node server */
 
 struct _node_serv {
+	fdhandler_t *mgr_hand;
 	int worker_count;
 	struct listnode worker_list;
-	fdhandler_t *mgr_hand;
 	int nextseq;
 
 	int task_count;
 	task_worker_t *suit_worker;
+    pthread_mutex_t lock;
 };
 
 struct _task_worker {
@@ -45,6 +46,7 @@ struct _task_worker {
 
 	int task_count;
 	struct Hashmap *tasks_map; 	/*key: task id*/
+    pthread_mutex_t lock;
 
 	node_serv_t *owner;
 	struct listnode node;
@@ -67,19 +69,23 @@ void release_task(task_t *task)
 	free(task);
 }
 
+static task_t *worker_get_task_by_id(task_worker_t *worker, uint32_t taskid);
 
 static task_t *find_node_serv_task(node_serv_t *ns, int taskid)
 {
 	task_t *task;
 	task_worker_t *worker;
 
+    pthread_mutex_lock(&ns->lock);
 	list_for_each_entry(worker, &ns->worker_list, node) {
 		task = hashmapGet(worker->tasks_map, (void *)taskid);
 		if(task) {
+            pthread_mutex_unlock(&ns->lock);
 			return task;
 		}
 	}
 
+    pthread_mutex_unlock(&ns->lock);
 	return NULL;
 }
 
@@ -126,7 +132,7 @@ static int task_req_handle(task_worker_t *worker, struct pack_task_req *pack, vo
 	if(!ops)
 		return -EINVAL;
 
-	task = hashmapGet(worker->tasks_map, (void *)pack->taskid);
+    task = worker_get_task_by_id(worker, pack->taskid);
 	if(!task) {
 		loge("not found task by taskid:%d.\n", pack->taskid);
 		return -EINVAL;
@@ -216,6 +222,7 @@ static task_worker_t *create_task_worker(node_serv_t *ns)
 		   	task_worker_close, tworker);
 	tworker->tasks_map = hashmapCreate(HASH_WORKER_CAPACITY, int_hash, int_equals);
 	tworker->nextseq = 0;
+    pthread_mutex_init(&tworker->lock, NULL);
 
 	list_add_tail(&ns->worker_list, &tworker->node);
 	ns->worker_count++;
@@ -229,6 +236,10 @@ static void free_task_worker(task_worker_t *worker)
 
 	list_remove(&worker->node);
 	ns->worker_count--;
+
+    if(ns->suit_worker == worker)
+        ns->suit_worker = NULL;
+
 	free(worker);
 }
 
@@ -332,25 +343,55 @@ static int task_assign_response(node_serv_t *ns, task_t *task)
 
 static void worker_add_task(task_worker_t *worker, task_t *task)
 {
+    pthread_mutex_lock(&worker->lock);
 	worker->task_count++;
 	task->worker = worker;
 
 	logd("worker add task. taskid:%d\n", task->taskid);
 	hashmapPut(worker->tasks_map, (void*)task->taskid, task);
+
+    pthread_mutex_unlock(&worker->lock);
+}
+
+static task_t *worker_get_task_by_id(task_worker_t *worker, uint32_t taskid)
+{
+	task_t *task;
+
+    pthread_mutex_lock(&worker->lock);
+
+	task = hashmapGet(worker->tasks_map, (void *)taskid);
+	if(!task) {
+		loge("not found task by taskid:%d.\n", taskid);
+        pthread_mutex_unlock(&worker->lock);
+		return NULL;
+	}
+
+    pthread_mutex_unlock(&worker->lock);
+    return task;
 }
 
 
 static void worker_remove_task(task_worker_t *worker, task_t *task)
 {
+    pthread_mutex_lock(&worker->lock);
+
 	hashmapRemove(worker->tasks_map, (void *)task->taskid);
 	worker->task_count--;
+
+    /*XXX*/
+    if(worker->task_count == 0)
+        free_task_worker(worker);
+
+    pthread_mutex_unlock(&worker->lock);
 }
 
 static int node_serv_task_register(node_serv_t *ns, task_t *task)
 {
+    int ret = 0;
 	task_worker_t *pos, *worker = NULL;
 	int count = WORKER_MAX_TASK_COUNT;
 
+    pthread_mutex_lock(&ns->lock);
 	worker = ns->suit_worker;
 	if(worker && worker->task_count < WORKER_MAX_TASK_COUNT)
 		goto found;
@@ -367,8 +408,10 @@ static int node_serv_task_register(node_serv_t *ns, task_t *task)
 		goto found;
 	} else {
 		worker = create_task_worker(ns);
-		if(!worker)
-			return -EINVAL;
+		if(!worker) {
+			ret = -EINVAL;
+            goto out;
+        }
 	}
 
 found:
@@ -376,16 +419,21 @@ found:
 	worker_add_task(worker, task);
 
 	ns->suit_worker = worker;	
-	return 0;
+out:
+    pthread_mutex_unlock(&ns->lock);
+	return ret;
 }
 
 static void node_serv_task_unregister(node_serv_t *ns, task_t *task)
 {
 	task_worker_t *worker = task->worker;
 
+    pthread_mutex_lock(&ns->lock);
 	worker_remove_task(worker, task);
 	ns->task_count--;
 	task->worker = NULL;
+
+    pthread_mutex_unlock(&ns->lock);
 }
 
 
@@ -474,6 +522,7 @@ int node_serv_init(const char *host)
 	ns->worker_count = 0;
 	list_init(&ns->worker_list);
 	ns->suit_worker = NULL;
+    pthread_mutex_init(&ns->lock, NULL);
 
 	return 0;
 }

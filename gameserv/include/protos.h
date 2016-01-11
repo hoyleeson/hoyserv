@@ -92,6 +92,7 @@ struct pack_join_group {
 
 struct pack_leave_group {
 	uint32_t userid;
+	uint32_t groupid;
 };
 
 /* also used for join group result. */

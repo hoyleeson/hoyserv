@@ -23,13 +23,18 @@ struct _node_info {
 	struct listnode node;
 	struct sockaddr_in addr;
 	node_mgr_t *mgr;
+
+    struct listnode tasklist;
+    pthread_mutex_t lock;
 };
 
 struct _node_mgr {
 	int taskids;
 	int node_count;
 	fdhandler_t *hand;
+
 	struct listnode nodelist;
+    pthread_mutex_t lock;
 };
 
 typedef struct _task_handle {
@@ -41,6 +46,7 @@ typedef struct _task_handle {
 	struct task_operations *ops;
 
 	node_info_t *node;
+    struct listnode n;
 } task_handle_t;
 
 

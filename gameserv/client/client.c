@@ -147,7 +147,7 @@ void client_logout(void)
 	struct client *cli = &_client;
 
 	if(!cli->running)
-		return -EINVAL;
+		return;
 
 	userid = (uint32_t *)client_pkt_alloc(&cli->control);
 
@@ -205,7 +205,7 @@ void client_delete_group(void)
 	struct client *cli = &_client;
 
 	if(!cli->running)
-		return -EINVAL;
+		return;
 
 	p = (struct pack_del_group *)client_pkt_alloc(&cli->control);
 
@@ -221,7 +221,8 @@ int client_list_group(int pos, int count, struct group_description *gres, int *r
 	char result[RESULT_MAX_LEN];
 	struct pack_list_group *p;
 	group_desc_t *gdesc;
-	int retlen, ofs = 0;
+	int retlen = 0;
+    int ofs = 0;
 	struct group_description *gp = gres;
 	struct client *cli = &_client;
 
@@ -247,13 +248,14 @@ int client_list_group(int pos, int count, struct group_description *gres, int *r
 
 	/* XXX: current version: group_desc_t equals struct group_description */
 	while(ofs < retlen) {
-		gdesc = (group_desc_t *)result + ofs;
+		gdesc = (group_desc_t *)(result + ofs);
 
 		gp->groupid = gdesc->groupid;
 		gp->flags = gdesc->flags;
 		memcpy(gp->name, gdesc->name, gdesc->namelen);
 		gp->name[gdesc->namelen] = '\0';
 
+	//	logd("%s gp->groupid:%d, gp->name:%s\n", __func__, gp->groupid, gp->name);
 		gp++;
 		ofs += sizeof(group_desc_t) + gdesc->namelen;
 		(*rescount)++;
@@ -302,7 +304,7 @@ void client_leave_group(void)
 	struct client *cli = &_client;
 
 	if(!cli->running)
-		return -EINVAL;
+		return;
 
 	p = (struct pack_join_group *)client_pkt_alloc(&cli->control);
 
@@ -402,6 +404,20 @@ static void client_hbeat(void)
 	client_pkt_send(&cli->control, MSG_CLI_HBEAT, userid, sizeof(uint32_t));
 }
 
+static void cli_group_delete_handle(void)
+{
+    int ret;
+	struct client *cli = &_client;
+
+	ret = cli->callback(EVENT_GROUP_DELETE, NULL, NULL);
+	if(ret) {
+		loge("client EVENT_GROUP_DELETE handle fail.\n");	
+	}
+
+    logd("receive group delete nodify.\n");
+    cli->groupid = INVAILD_GROUPID;
+    cli->task.taskid = INVAILD_TASKID;
+}
 
 static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 {
@@ -453,8 +469,7 @@ static void cli_msg_handle(void* user, uint8_t *data, int len, void *from)
 			break;
 		}
 		case MSG_GROUP_DELETE:
-			cli->groupid = INVAILD_GROUPID;
-			cli->task.taskid = INVAILD_TASKID;
+            cli_group_delete_handle();
 			break;
 		case MSG_HANDLE_ERR:
 			break;

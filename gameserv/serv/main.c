@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <getopt.h>
 #include <string.h>
+#include <signal.h>
 
 #include <protos.h>
 #include <common/log.h>
@@ -70,6 +71,48 @@ static void init_task_protocals(void)
 	}
 }
 
+static void signal_handler(int signal)
+{
+    loge("caught signal %d.\n", signal);
+    exit(1);
+}
+
+static void signals_init(void)
+{
+    signal(SIGCHLD, SIG_IGN);
+
+    signal(SIGBUS, signal_handler);
+    signal(SIGSEGV, signal_handler);
+    signal(SIGHUP, signal_handler);
+    signal(SIGINT, signal_handler);
+    signal(SIGCHLD, signal_handler);
+    signal(SIGPIPE, signal_handler);
+}
+
+static void do_help(void)
+{
+    int len = 0;
+    char buf[1024] = { 0 };
+
+    len += sprintf(buf + len, "Compile Date: %s,Time: %s, Version: %d\n", 
+            __DATE__, __TIME__, SERV_VERSION);
+
+    len += sprintf(buf + len, "\n"
+            "usage: serv command [command options]\n" 
+            "\n"
+            "Command syntax:\n"
+            "\tserv [-m full|node|center] [-s Host Address]\n"
+            "\n"
+            "Command parameters:\n"
+            "\t'-m' or '--mode'    - Specify the server working mode.\n"
+            "\t'-s' or '--server'  - Name of center server host address.\n"
+            "\t'-v' or '--version' - show version num.\n"
+            "\t'-h' or '--help'    - show this help message.\n");
+
+    logi("%s\n", buf);
+}
+
+
 int main(int argc, char **argv)
 {
 	int opt;
@@ -90,12 +133,15 @@ int main(int argc, char **argv)
 				return 0;
 			case 'h':
 			default:
-				break;
+                do_help();
+				return 0;
 		}
 	}
 
 	logi("server running. mode=%d\n", mode);
 
+    umask(0);
+    signals_init();
 	init_global_thpool();
 
 	iohandler_init();

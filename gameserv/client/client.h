@@ -70,7 +70,13 @@ enum {
 	 * arg2: int, image length. */
 	EVENT_STATE_IMG,
 
+    /* arg1: NULL
+	 * arg2: NULL */
 	EVENT_CHECKIN,
+
+    /* arg1: NULL
+	 * arg2: NULL */
+    EVENT_GROUP_DELETE,
 };
 
 
