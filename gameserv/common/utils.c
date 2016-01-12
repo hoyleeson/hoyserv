@@ -83,7 +83,7 @@ void fd_setnonblock(int  fd)
 
     if (flags < 0) {
         fatal("%s: could not get flags for fd %d: %s",
-               __FUNCTION__, fd, strerror(errno));
+                __FUNCTION__, fd, strerror(errno));
     }
 
     do {
@@ -92,7 +92,7 @@ void fd_setnonblock(int  fd)
 
     if (ret < 0) {
         fatal("%s: could not set fd %d to non-blocking: %s",
-               __FUNCTION__, fd, strerror(errno));
+                __FUNCTION__, fd, strerror(errno));
     }
 }
 
@@ -104,39 +104,39 @@ int fd_accept(int  fd)
     int              ret;
 
     do {
-		ret = accept(fd, &from, &fromlen);
-	} while (ret < 0 && errno == EINTR);
+        ret = accept(fd, &from, &fromlen);
+    } while (ret < 0 && errno == EINTR);
 
-	return ret;
+    return ret;
 }
 
 int get_ipaddr(const char* eth, char* ipaddr)
 {
-	int i = 0;
-	int sockfd;
-	struct ifconf ifconf;
-	char buf[512];
-	struct ifreq *ifreq;
+    int i = 0;
+    int sockfd;
+    struct ifconf ifconf;
+    char buf[512];
+    struct ifreq *ifreq;
 
-	ifconf.ifc_len = 512;
-	ifconf.ifc_buf = buf;
+    ifconf.ifc_len = 512;
+    ifconf.ifc_buf = buf;
 
-	if((sockfd = socket(AF_INET, SOCK_DGRAM, 0))<0) {
-		perror("socket");
-		exit(1);
-	}
+    if((sockfd = socket(AF_INET, SOCK_DGRAM, 0))<0) {
+        perror("socket");
+        exit(1);
+    }
 
-	ioctl(sockfd, SIOCGIFCONF, &ifconf);
-	ifreq = (struct ifreq*)buf;
+    ioctl(sockfd, SIOCGIFCONF, &ifconf);
+    ifreq = (struct ifreq*)buf;
 
-	for(i=(ifconf.ifc_len/sizeof(struct ifreq)); i>0; i--) {
-		if(strcmp(ifreq->ifr_name, eth)==0) {
-			strcpy(ipaddr, inet_ntoa(((struct sockaddr_in*)&(ifreq->ifr_addr))->sin_addr));
-			return 0;
-		}
+    for(i=(ifconf.ifc_len/sizeof(struct ifreq)); i>0; i--) {
+        if(strcmp(ifreq->ifr_name, eth)==0) {
+            strcpy(ipaddr, inet_ntoa(((struct sockaddr_in*)&(ifreq->ifr_addr))->sin_addr));
+            return 0;
+        }
 
-		ifreq++;
-	}
-	return -EINVAL;
+        ifreq++;
+    }
+    return -EINVAL;
 }
 

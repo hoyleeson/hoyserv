@@ -30,7 +30,7 @@ typedef	struct thr_pool	thr_pool_t;
  * On error, thr_pool_create() returns NULL with errno set to the error code.
  */
 extern	thr_pool_t	*thr_pool_create(uint_t min_threads, uint_t max_threads,
-				uint_t linger, pthread_attr_t *attr);
+        uint_t linger, pthread_attr_t *attr);
 
 /*
  * Enqueue a work request to the thread pool job queue.
@@ -47,7 +47,7 @@ extern	thr_pool_t	*thr_pool_create(uint_t min_threads, uint_t max_threads,
  * On error, thr_pool_queue() returns -1 with errno set to the error code.
  */
 extern	int	thr_pool_queue(thr_pool_t *pool,
-			void *(*func)(void *), void *arg);
+        void *(*func)(void *), void *arg);
 
 /*
  * Wait for all queued jobs to complete.

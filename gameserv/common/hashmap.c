@@ -44,12 +44,12 @@ Hashmap* hashmapCreate(size_t initialCapacity,
         int (*hash)(void* key), bool (*equals)(void* keyA, void* keyB)) {
     assert(hash != NULL);
     assert(equals != NULL);
-    
+
     Hashmap* map = malloc(sizeof(Hashmap));
     if (map == NULL) {
         return NULL;
     }
-    
+
     // 0.75 load factor.
     size_t minimumBucketCount = initialCapacity * 4 / 3;
     map->bucketCount = 1;
@@ -63,14 +63,14 @@ Hashmap* hashmapCreate(size_t initialCapacity,
         free(map);
         return NULL;
     }
-    
+
     map->size = 0;
 
     map->hash = hash;
     map->equals = equals;
-    
+
     mutex_init(&map->lock);
-    
+
     return map;
 }
 
@@ -86,7 +86,7 @@ static inline int hashKey(Hashmap* map, void* key) {
     h ^= (((unsigned int) h) >> 14);
     h += (h << 4);
     h ^= (((unsigned int) h) >> 10);
-       
+
     return h;
 }
 
@@ -108,7 +108,7 @@ static void expandIfNecessary(Hashmap* map) {
             // Abort expansion.
             return;
         }
-        
+
         // Move over existing entries.
         size_t i;
         for (i = 0; i < map->bucketCount; i++) {

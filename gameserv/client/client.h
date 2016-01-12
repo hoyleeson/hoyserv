@@ -10,24 +10,24 @@ extern "C" {
 #endif
 
 enum client_mode {
-	CLI_MODE_CONTROL_ONLY,
-	CLI_MODE_TASK_ONLY,
-	CLI_MODE_FULL_FUNCTION,
+    CLI_MODE_CONTROL_ONLY,
+    CLI_MODE_TASK_ONLY,
+    CLI_MODE_FULL_FUNCTION,
 };
 
 #define NAME_MAX_LEN 	(128)
 struct group_description {
-	uint32_t groupid;
-	uint16_t flags;
-	char name[NAME_MAX_LEN];
+    uint32_t groupid;
+    uint16_t flags;
+    char name[NAME_MAX_LEN];
 };
 
 struct cli_context_state {
-	uint32_t userid;
-	uint32_t groupid;
+    uint32_t userid;
+    uint32_t groupid;
 
-	uint32_t taskid;
-	struct sockaddr_in addr;
+    uint32_t taskid;
+    struct sockaddr_in addr;
 };
 
 /* event callback routine.
@@ -60,22 +60,22 @@ int client_state_load(struct cli_context_state *state);
 void client_state_dump(struct cli_context_state *state);
 
 enum {
-	EVENT_NONE,
+    EVENT_NONE,
 
-	  /* arg1: void *, receive data.
-	   * arg2: int, data length. */
-	EVENT_COMMAND,
+    /* arg1: void *, receive data.
+     * arg2: int, data length. */
+    EVENT_COMMAND,
 
-	/* arg1: void *, receive state image.
-	 * arg2: int, image length. */
-	EVENT_STATE_IMG,
-
-    /* arg1: NULL
-	 * arg2: NULL */
-	EVENT_CHECKIN,
+    /* arg1: void *, receive state image.
+     * arg2: int, image length. */
+    EVENT_STATE_IMG,
 
     /* arg1: NULL
-	 * arg2: NULL */
+     * arg2: NULL */
+    EVENT_CHECKIN,
+
+    /* arg1: NULL
+     * arg2: NULL */
     EVENT_GROUP_DELETE,
 };
 

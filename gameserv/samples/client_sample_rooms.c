@@ -55,7 +55,7 @@ int parse_cmds(char *line, char *argv[])
 
     return nargs;
 }
-    
+
 static void run_netplay(void)
 {
     int ret;
@@ -208,7 +208,7 @@ static struct cmd_ops cmds[] = {
 
 int cli_callback(int event, void *arg1, void *arg2)
 {
-	printf("receive event(%d)\n", event);
+    printf("receive event(%d)\n", event);
     return 0;
 }
 

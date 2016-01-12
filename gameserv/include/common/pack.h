@@ -2,17 +2,18 @@
 #define _COMMON_PACK_H_
 
 #include <stdint.h>
+#include <pthread.h>
 #include <common/list.h>
 
 typedef struct _pack_header {
-	uint16_t magic;
-	uint8_t version;
-	uint8_t type;
-	uint16_t seqnum;
-	uint8_t _reserved1;
-	uint8_t _reserved2;
-	uint32_t datalen;
-	uint8_t data[0];
+    uint16_t magic;
+    uint8_t version;
+    uint8_t type;
+    uint16_t seqnum;
+    uint8_t _reserved1;
+    uint8_t _reserved2;
+    uint32_t datalen;
+    uint8_t data[0];
 }__attribute__((packed)) pack_head_t;
 
 
@@ -25,14 +26,14 @@ void free_pack(pack_head_t *pack);
 typedef struct _pack_buf pack_buf_t;
 
 struct _pack_buf {
-	void *data;
-	int len;
+    void *data;
+    int len;
 
-	struct listnode list;
+    struct listnode list;
 
-	void  (*destructor)(pack_buf_t *pkb);
-	uint8_t refcount;
-	pthread_mutex_t lock;
+    void  (*destructor)(pack_buf_t *pkb);
+    uint8_t refcount;
+    pthread_mutex_t lock;
 };
 
 

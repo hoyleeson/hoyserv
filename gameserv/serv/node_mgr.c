@@ -88,18 +88,18 @@ static void node_hand_fn(void* opaque, uint8_t *data, int len)
 
     switch(head->type) {
         case MSG_TASK_ASSIGN_RESPONSE:
-            {
-                struct pack_task_assign_response *pt;
+        {
+            struct pack_task_assign_response *pt;
 
-                pt = (struct pack_task_assign_response *)payload;
-                response_post(&node->waits, MSG_TASK_ASSIGN_RESPONSE, pt->taskid, &pt->addr);
+            pt = (struct pack_task_assign_response *)payload;
+            response_post(&node->waits, MSG_TASK_ASSIGN_RESPONSE, pt->taskid, &pt->addr);
 #if 1
-                struct sockaddr_in *addr = (struct sockaddr_in *)&pt->addr;
-                logd("response :task worker address: %s, port: %d.\n", 
-                        inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
+            struct sockaddr_in *addr = (struct sockaddr_in *)&pt->addr;
+            logd("response :task worker address: %s, port: %d.\n", 
+                    inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
 #endif
-                break;
-            }
+            break;
+        }
         default:
             break;
     }

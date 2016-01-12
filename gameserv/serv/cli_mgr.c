@@ -286,7 +286,7 @@ static int cmd_delete_group_handle(cli_mgr_t *cm, struct pack_del_group *pr)
     ginfo = cli_mgr_del_group(cm, pr->groupid);
 
     list_for_each_entry(user, &ginfo->userlist, node) {
-        if(creater->userid == user->userid)
+        if(pr->userid == user->userid)
             continue;
 
         group_delete_notify(cm, user);
@@ -452,7 +452,7 @@ static int cmd_hbeat_handle(cli_mgr_t *cm, uint32_t userid)
 
 static void cli_mgr_handle(void *opaque, uint8_t *data, int len, void *from)
 {
-    int ret;
+    int ret = 0;
     cli_mgr_t *cm = (cli_mgr_t *)opaque;
     pack_head_t *head;
     void *payload;
@@ -485,11 +485,11 @@ static void cli_mgr_handle(void *opaque, uint8_t *data, int len, void *from)
             ret = cmd_login_handle(cm, cliaddr);
             break;
         case MSG_CLI_LOGOUT:
-            {
-                uint32_t uid = *(uint32_t *)payload;
-                ret = cmd_logout_handle(cm, uid);
-                break;
-            }
+        {
+            uint32_t uid = *(uint32_t *)payload;
+            ret = cmd_logout_handle(cm, uid);
+            break;
+        }
         case MSG_CLI_CREATE_GROUP:
             ret = cmd_create_group_handle(cm, (struct pack_creat_group *)payload);
             break;
@@ -506,11 +506,11 @@ static void cli_mgr_handle(void *opaque, uint8_t *data, int len, void *from)
             ret = cmd_leave_group_handle(cm, (struct pack_leave_group *)payload);
             break;
         case MSG_CLI_HBEAT:
-            {
-                uint32_t uid = *(uint32_t *)payload;
-                ret = cmd_hbeat_handle(cm, uid);
-                break;
-            }
+        {
+            uint32_t uid = *(uint32_t *)payload;
+            ret = cmd_hbeat_handle(cm, uid);
+            break;
+        }
         default:
             logw("unknown packet. type:%d\n", head->type);
             break;

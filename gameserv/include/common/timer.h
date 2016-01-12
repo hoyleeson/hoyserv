@@ -8,34 +8,34 @@
 struct timer_item;
 
 enum clock_mode {
-	CLOCK_MODE_LOOP,
-	CLOCK_MODE_EVENT,
+    CLOCK_MODE_LOOP,
+    CLOCK_MODE_EVENT,
 }; 
 
 //#define EMU_CLOCK_MODE_EVENT
 
 typedef struct timer_base {
-	int clkid;
-	int enable;
-	int64_t next_expires;
-	fdhandler_t* fdhandler;
-	struct timer_item *timers;
+    int clkid;
+    int enable;
+    int64_t next_expires;
+    fdhandler_t* fdhandler;
+    struct timer_item *timers;
 
 #ifdef EMU_CLOCK_MODE_EVENT
-	int mode;
-	pthread_cond_t cond;
+    int mode;
+    pthread_cond_t cond;
     pthread_mutex_t mutex;
 #endif
 } timer_base_t;
 
 struct timer_item {
-	struct timer_item *next;
+    struct timer_item *next;
 
-	struct timer_base *clock;
+    struct timer_base *clock;
 
-	int64_t expires;
-	void (*func)(unsigned long);
-	unsigned long data;
+    int64_t expires;
+    void (*func)(unsigned long);
+    unsigned long data;
 };
 
 typedef void (*timer_func)(unsigned long);

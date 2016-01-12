@@ -16,7 +16,6 @@ AC_PROG_CPP
 AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_MAKE_SET
-AC_PROG_RANLIB
 
 # Checks for libraries.
 AC_PROG_RANLIB
@@ -37,21 +36,48 @@ AC_TYPE_UINT64_T
 AC_TYPE_UINT8_T
 
 # Checks for library functions.
-AC_FUNC_MALLOC
+#AC_FUNC_MALLOC
 AC_CHECK_FUNCS([bzero clock_gettime gethostbyname gettimeofday inet_ntoa memset mkfifo socket strerror])
 
 AC_CHECK_LIB(pthread, pthread_create) 
 
 # enable debug or not                                                          
-AC_ARG_ENABLE(debug, AS_HELP_STRING([--enable-debug], [enable DEBUG mode(default=no)]), [], [enable_debug=no])                                              
-AS_IF([test "x$enable_debug" = "xyes"], [CFLAGS="-g2 -O0 -DDEBUG -Wall"], 
-	  [test "x$enable_debug" = "xno"], [CFLAGS="-O2 -Wall"], [])     
-AS_IF([test "x$enable_debug" = "xyes"], [CXXFLAGS="-g2 -O0 -DDEBUG -Wall"],
-	  [test "x$enable_debug" = "xno"], [CXXFLAGS="-O2 -Wall"], [])     
+AC_ARG_ENABLE(debug,
+              AS_HELP_STRING([--enable-debug], [enable DEBUG mode(default=no)]), [],
+              [enable_debug=no])
+AS_IF([test "${enable_debug}" = "yes"], [
+       CFLAGS="-g2 -O0 -DDEBUG -Wall"
+       CXXFLAGS="-g2 -O0 -DDEBUG -Wall"
+       ], 
+	  [test "${enable_debug}" = "no"], [
+       CFLAGS="-O2 -Wall"
+       CXXFLAGS="-O2 -Wall"
+       ], [])     
+
+AC_ARG_ENABLE(verbose, 
+              AS_HELP_STRING([--enable-verbose], [enable printf verbose log (default=no)]), [],
+              [enable_verbose=no]) 
+AS_IF([test "${enable_verbose}" != "no"], [
+       CFLAGS="${CFLAGS} -DVDEBUG"
+       CXXFLAGS="${CXXFLAGS} -DVDEBUG"
+       ])
 
 
-GLOBAL_CFLAGS=-DVDEBUG
+LIBPTHREAD=""
+AC_SEARCH_LIBS(pthread_rwlock_init, pthread pthreads c_r, [
+  AS_IF([test "$ac_cv_search_pthread_rwlock_init" != "none required"], [
+    LIBPTHREAD="$ac_cv_search_pthread_rwlock_init"
+  ])
+])
+AC_SUBST(LIBPTHREAD)
 
+#LIBRT=""
+#AC_CHECK_LIB(rt, clock_gettime, [LIBRT="-lrt"])
+#AC_SUBST(LIBRT)
+
+AC_CHECK_LIB(rt, clock_gettime, [SERV_ADD_LIBS([servcore],[-lrt])])
+
+GLOBAL_CFLAGS=
 AC_SUBST(GLOBAL_CFLAGS)
 
 AC_CONFIG_FILES([Makefile

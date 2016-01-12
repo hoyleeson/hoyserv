@@ -2,6 +2,7 @@
 #define _SERV_NODE_MGR_H_
 
 #include <stdint.h>
+#include <pthread.h>
 #include <common/list.h>
 #include <common/wait.h>
 #include <common/iohandler.h>
@@ -13,39 +14,39 @@ typedef struct _node_mgr node_mgr_t;
 typedef struct _node_info node_info_t;
 
 struct _node_info {
-	int fd;
-	fdhandler_t *hand;
-	int nextseq;
-	response_wait_t waits;
-	int task_count;
-	int priority;
+    int fd;
+    fdhandler_t *hand;
+    int nextseq;
+    response_wait_t waits;
+    int task_count;
+    int priority;
 
-	struct listnode node;
-	struct sockaddr_in addr;
-	node_mgr_t *mgr;
+    struct listnode node;
+    struct sockaddr_in addr;
+    node_mgr_t *mgr;
 
     struct listnode tasklist;
     pthread_mutex_t lock;
 };
 
 struct _node_mgr {
-	int taskids;
-	int node_count;
-	fdhandler_t *hand;
+    int taskids;
+    int node_count;
+    fdhandler_t *hand;
 
-	struct listnode nodelist;
+    struct listnode nodelist;
     pthread_mutex_t lock;
 };
 
 typedef struct _task_handle {
-	int taskid;
-	int type;
-	int priority;
-	
-	struct sockaddr_in addr; 	/* assign response */
-	struct task_operations *ops;
+    int taskid;
+    int type;
+    int priority;
 
-	node_info_t *node;
+    struct sockaddr_in addr; 	/* assign response */
+    struct task_operations *ops;
+
+    node_info_t *node;
     struct listnode n;
 } task_handle_t;
 

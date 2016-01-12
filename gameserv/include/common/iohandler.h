@@ -1,6 +1,7 @@
 #ifndef _EMUSERVD_IOHANDLER_H_
 #define _EMUSERVD_IOHANDLER_H_
 
+#include <pthread.h>
 #include <stdint.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -65,17 +66,17 @@ typedef struct {
 } loop_hook_t;
 
 /* looper_t is the main object modeling a looper object
- */
+*/
 typedef struct {
-	int epoll_fd;
-	int num_fds;
-	int max_fds;
+    int epoll_fd;
+    int num_fds;
+    int max_fds;
 
-	loop_hook_t*       	hooks;
-	struct epoll_event* events;
-	int ctl_socks[2];
+    loop_hook_t*       	hooks;
+    struct epoll_event* events;
+    int ctl_socks[2];
 
-	pthread_mutex_t 	lock;
+    pthread_mutex_t 	lock;
 } looper_t;
 
 
@@ -103,18 +104,18 @@ typedef struct _packet   packet_t;
 
 struct _packet {
     packet_t* next;
-	int refcount;
-	union {
-		uint32_t channel; 	/*used tcp accept only*/
-		struct sockaddr addr; 	/*used udp only*/
-	};
+    int refcount;
+    union {
+        uint32_t channel; 	/*used tcp accept only*/
+        struct sockaddr addr; 	/*used udp only*/
+    };
 
     int len;
     uint8_t data[MAX_PAYLOAD];
 };
 
 #define data_to_packet(ptr)  \
-	node_to_item(ptr, packet_t, data)
+    node_to_item(ptr, packet_t, data)
 
 
 /** PACKET RECEIVER
@@ -136,13 +137,13 @@ typedef void (*close_func)(void*  user);
 
 typedef struct {
     void*      user;
-	post_func   post;
+    post_func   post;
     close_func  close;
-	union {
-		handle_func handle; /* used for fdhandler_create() */
-		handlefrom_func handlefrom; /* used for fdhandler_create() */
-		accept_func accept; /* used for fdhandler_create() */
-	};
+    union {
+        handle_func handle; /* used for fdhandler_create() */
+        handlefrom_func handlefrom; /* used for fdhandler_create() */
+        accept_func accept; /* used for fdhandler_create() */
+    };
 } receiver_t;
 
 
@@ -164,15 +165,15 @@ typedef struct fdhandler_ops fdhandler_ops_t;
 
 
 enum fdhandler_type {
-	HANDLER_TYPE_NORMAL,
-	HANDLER_TYPE_TCP_ACCEPT,
-	HANDLER_TYPE_UDP,
+    HANDLER_TYPE_NORMAL,
+    HANDLER_TYPE_TCP_ACCEPT,
+    HANDLER_TYPE_UDP,
 };
 
 struct fdhandler {
     fdhandler_list_t*  list;
     int    	fd;
-	int 	type;
+    int 	type;
     char    closing;
     receiver_t receiver[1];
 
@@ -182,7 +183,7 @@ struct fdhandler {
 
     fdhandler_t*    next;
     fdhandler_t**   pref;
-	pthread_mutex_t lock;
+    pthread_mutex_t lock;
 };
 
 struct fdhandler_list {
@@ -199,7 +200,7 @@ struct fdhandler_list {
      */
     fdhandler_t*   closing;
 
-	pthread_mutex_t lock;
+    pthread_mutex_t lock;
 };
 
 
