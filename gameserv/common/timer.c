@@ -171,10 +171,10 @@ static void timerfd_receive(timer_base_t* c, uint8_t *data, int len)
 
 static void timerfd_close(timer_base_t* c)
 {
-    logd("%s: client %p (%d)", __FUNCTION__, c, c->fdhandler->fd);
+    logd("%s: client %p (%d)", __FUNCTION__, c, c->ioasync->fd);
 
     /* no need to shutdown the FDHandler */
-    c->fdhandler = NULL;
+    c->ioasync = NULL;
 }
 
 
@@ -186,9 +186,9 @@ void timer_init(void) {
     clock->next_expires = 0;
 
     clock->clkid = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-    clock->fdhandler = fdhandler_create(clock->clkid, (handle_func)timerfd_receive, 
+    clock->ioasync = ioasync_create(clock->clkid, (handle_func)timerfd_receive, 
             (close_func)timerfd_close, clock);
 
-    logd("timer init, fd:%d, %p", clock->clkid, clock->fdhandler);
+    logd("timer init, fd:%d, %p", clock->clkid, clock->ioasync);
 }
 

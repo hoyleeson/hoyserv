@@ -35,7 +35,7 @@ static void node_unregister(node_mgr_t *mgr, node_info_t *node)
 static void *nodemgr_task_pkt_alloc(node_info_t *node)
 {
     packet_t *packet;
-    packet = fdhandler_pkt_alloc(node->hand);
+    packet = ioasync_pkt_alloc(node->hand);
 
     return packet->data + pack_head_len();
 
@@ -54,7 +54,7 @@ static void nodemgr_task_pkt_send(node_info_t *node, int type, void *data, int l
 
     packet->len = len + pack_head_len();
 
-    fdhandler_pkt_send(node->hand, packet);
+    ioasync_pkt_send(node->hand, packet);
 }
 
 #if 0
@@ -334,7 +334,7 @@ static void nodemgr_accept_fn(void* user, int acceptfd)
 
     node->fd = acceptfd;
     node->mgr = mgr;
-    node->hand = fdhandler_create(acceptfd, node_hand_fn, node_close_fn, node);
+    node->hand = ioasync_create(acceptfd, node_hand_fn, node_close_fn, node);
     node->nextseq = 0;
     node->task_count = 0;
     list_init(&node->tasklist);
@@ -369,7 +369,7 @@ node_mgr_t *node_mgr_init(void)
         return NULL;
 
     sock = socket_inaddr_any_server(NODE_SERV_LOGIN_PORT, SOCK_STREAM);
-    nodemgr->hand = fdhandler_accept_create(sock, nodemgr_accept_fn, nodemgr_close_fn, nodemgr);
+    nodemgr->hand = ioasync_accept_create(sock, nodemgr_accept_fn, nodemgr_close_fn, nodemgr);
     list_init(&nodemgr->nodelist);
     pthread_mutex_init(&nodemgr->lock, NULL);
 

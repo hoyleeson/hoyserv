@@ -168,7 +168,7 @@ static inline struct sockaddr *get_packet_addr(packet_t *p)
 /** PACKET RECEIVER
  **
  ** Simple abstraction for something that can receive a packet
- ** from a fdhandler_t (see below) or something else.
+ ** from a ioasync_t (see below) or something else.
  **
  ** Send a packet to it with 'receiver_post'
  **
@@ -187,9 +187,9 @@ typedef struct {
     post_func   post;
     close_func  close;
     union {
-        handle_func handle; /* used for fdhandler_create() */
-        handlefrom_func handlefrom; /* used for fdhandler_create() */
-        accept_func accept; /* used for fdhandler_create() */
+        handle_func handle; /* used for ioasync_create() */
+        handlefrom_func handlefrom; /* used for ioasync_create() */
+        accept_func accept; /* used for ioasync_create() */
     };
 } receiver_t;
 
@@ -203,22 +203,22 @@ typedef struct {
  **
  ** note that we support clean shutdown of file descriptors,
  ** i.e. we try to send all outgoing packets before destroying
- ** the fdhandler_t.
+ ** the ioasync_t.
  **/
 
-typedef struct fdhandler      fdhandler_t;
-typedef struct fdhandler_list  fdhandler_list_t;
-typedef struct fdhandler_ops fdhandler_ops_t;
+typedef struct ioasync      ioasync_t;
+typedef struct ioasync_list  ioasync_list_t;
+typedef struct ioasync_ops ioasync_ops_t;
 
 
-enum fdhandler_type {
+enum ioasync_type {
     HANDLER_TYPE_NORMAL,
     HANDLER_TYPE_TCP_ACCEPT,
     HANDLER_TYPE_UDP,
 };
 
-struct fdhandler {
-    fdhandler_list_t*  list;
+struct ioasync {
+    ioasync_list_t*  list;
     int    	fd;
     int 	type;
     char    closing;
@@ -228,48 +228,48 @@ struct fdhandler {
     packet_t*     out_first;
     packet_t**    out_ptail;
 
-    fdhandler_t*    next;
-    fdhandler_t**   pref;
+    ioasync_t*    next;
+    ioasync_t**   pref;
     pthread_mutex_t lock;
 };
 
-struct fdhandler_list {
+struct ioasync_list {
     /* the looper that manages the fds */
     looper_t*      looper;
 
-    /* list of active fdhandler_t objects */
-    fdhandler_t*   active;
+    /* list of active ioasync_t objects */
+    ioasync_t*   active;
 
-    /* list of closing fdhandler_t objects.
+    /* list of closing ioasync_t objects.
      * these are waiting to push their
      * queued packets to the fd before
      * freeing themselves.
      */
-    fdhandler_t*   closing;
+    ioasync_t*   closing;
 
     pthread_mutex_t lock;
 };
 
 
-packet_t *fdhandler_pkt_alloc(fdhandler_t *f);
-void fdhandler_pkt_free(fdhandler_t *f, packet_t *buf);
+packet_t *ioasync_pkt_alloc(ioasync_t *f);
+void ioasync_pkt_free(ioasync_t *f, packet_t *buf);
 
-void fdhandler_pkt_send(fdhandler_t *f, packet_t *p);
-void fdhandler_pkt_sendto(fdhandler_t *f, packet_t *p, struct sockaddr *to);
-void fdhandler_pkt_multicast(fdhandler_t *f, packet_t *p, struct sockaddr *dstptr, int count);
+void ioasync_pkt_send(ioasync_t *f, packet_t *p);
+void ioasync_pkt_sendto(ioasync_t *f, packet_t *p, struct sockaddr *to);
+void ioasync_pkt_multicast(ioasync_t *f, packet_t *p, struct sockaddr *dstptr, int count);
 
-void fdhandler_send(fdhandler_t *f, const uint8_t *data, int len);
-void fdhandler_sendto(fdhandler_t *f, const uint8_t *data, int len, void *to);
+void ioasync_send(ioasync_t *f, const uint8_t *data, int len);
+void ioasync_sendto(ioasync_t *f, const uint8_t *data, int len, void *to);
 
-void fdhandler_remove(fdhandler_t*  f);
-void fdhandler_prepend(fdhandler_t*  f, fdhandler_t**  list);
-void fdhandler_list_init(fdhandler_list_t* list, looper_t* looper);
-void fdhandler_close(fdhandler_t*  f);
-void fdhandler_shutdown(fdhandler_t*  f);
+void ioasync_remove(ioasync_t*  f);
+void ioasync_prepend(ioasync_t*  f, ioasync_t**  list);
+void ioasync_list_init(ioasync_list_t* list, looper_t* looper);
+void ioasync_close(ioasync_t*  f);
+void ioasync_shutdown(ioasync_t*  f);
 
-fdhandler_t* fdhandler_create(int fd, handle_func hand_fn, close_func close_fn, void *data);
-fdhandler_t* fdhandler_udp_create(int fd, handlefrom_func hand_fn, close_func close_fn, void *data);
-fdhandler_t* fdhandler_accept_create(int fd, accept_func accept_fn, close_func close_fn, void *data);
+ioasync_t *ioasync_create(int fd, handle_func hand_fn, close_func close_fn, void *data);
+ioasync_t *ioasync_udp_create(int fd, handlefrom_func hand_fn, close_func close_fn, void *data);
+ioasync_t *ioasync_accept_create(int fd, accept_func accept_fn, close_func close_fn, void *data);
 
 unsigned long iohandler_init(void);
 void iohandler_once(void);

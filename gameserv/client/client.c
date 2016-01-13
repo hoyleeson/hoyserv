@@ -37,7 +37,7 @@ struct pack_cli_msg {
 
 struct client_peer {
     uint32_t taskid;
-    fdhandler_t *hand;
+    ioasync_t *hand;
     uint16_t nextseq;
     struct sockaddr_in serv_addr;
 };
@@ -45,7 +45,7 @@ struct client_peer {
 #if 0
 struct client_task {
     uint32_t taskid;
-    fdhandler_t *hand;
+    ioasync_t *hand;
     uint16_t nextseq;
     struct sockaddr_in serv_addr;
 };
@@ -76,7 +76,7 @@ static void *client_pkt_alloc(struct client_peer *peer)
 {
     packet_t *packet;
 
-    packet = fdhandler_pkt_alloc(peer->hand);
+    packet = ioasync_pkt_alloc(peer->hand);
 
     return packet->data + pack_head_len();
 
@@ -113,7 +113,7 @@ static void client_pkt_send(struct client_peer *peer, int type, void *data, int 
             inet_ntoa(peer->serv_addr.sin_addr), 
             ntohs(peer->serv_addr.sin_port), type, len);
 
-    fdhandler_pkt_sendto(peer->hand, packet, (struct sockaddr*)&peer->serv_addr);
+    ioasync_pkt_sendto(peer->hand, packet, (struct sockaddr*)&peer->serv_addr);
 }
 
 
@@ -612,7 +612,7 @@ int client_task_start(void)
     sock = socket_inaddr_any_server(0, SOCK_DGRAM);
     cli->task.nextseq = 0;
 
-    cli->task.hand = fdhandler_udp_create(sock, cli_task_handle, cli_task_close, cli);
+    cli->task.hand = ioasync_udp_create(sock, cli_task_handle, cli_task_close, cli);
 
     if (getsockname(sock, (struct sockaddr*)&addr, &addrlen) < 0) {
         close(sock);
@@ -673,7 +673,7 @@ int client_init(const char *host, int mode, event_cb callback)
     cli->userid = INVAILD_USERID;
     cli->groupid = INVAILD_GROUPID;
 
-    cli->control.hand = fdhandler_udp_create(sock,
+    cli->control.hand = ioasync_udp_create(sock,
             cli_msg_handle, cli_msg_close, cli);
 
     cli->running = 1;

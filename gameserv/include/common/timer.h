@@ -18,7 +18,7 @@ typedef struct timer_base {
     int clkid;
     int enable;
     int64_t next_expires;
-    fdhandler_t* fdhandler;
+    ioasync_t* ioasync;
     struct timer_item *timers;
 
 #ifdef EMU_CLOCK_MODE_EVENT

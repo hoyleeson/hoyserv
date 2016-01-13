@@ -29,7 +29,7 @@ typedef struct _node_serv  node_serv_t;
 /* ns: node server */
 
 struct _node_serv {
-    fdhandler_t *mgr_hand;
+    ioasync_t *mgr_hand;
     int worker_count;
     struct listnode worker_list;
     int nextseq;
@@ -40,7 +40,7 @@ struct _node_serv {
 };
 
 struct _task_worker {
-    fdhandler_t *hand;
+    ioasync_t *hand;
     int nextseq;
     struct sockaddr addr;
 
@@ -95,7 +95,7 @@ void *task_worker_pkt_alloc(task_t *task)
     task_worker_t *worker = task->worker;
     packet_t *packet;
 
-    packet = fdhandler_pkt_alloc(worker->hand);
+    packet = ioasync_pkt_alloc(worker->hand);
 
     return packet->data + pack_head_len();
 
@@ -120,7 +120,7 @@ void task_worker_pkt_sendto(task_t *task, int type,
 
     dump_data("task worker send data", data, len);
 
-    fdhandler_pkt_sendto(worker->hand, packet, to);
+    ioasync_pkt_sendto(worker->hand, packet, to);
 }
 
 
@@ -141,7 +141,7 @@ void task_worker_pkt_multicast(task_t *task, int type,
 
     dump_data("task worker multicast data", data, len);
 
-    fdhandler_pkt_multicast(worker->hand, packet, dst_ptr, count);
+    ioasync_pkt_multicast(worker->hand, packet, dst_ptr, count);
 }
 
 
@@ -241,7 +241,7 @@ static task_worker_t *create_task_worker(node_serv_t *ns)
     tworker->task_count = 0;
     tworker->owner = ns;
 
-    tworker->hand = fdhandler_udp_create(sock, task_worker_handle,
+    tworker->hand = ioasync_udp_create(sock, task_worker_handle,
             task_worker_close, tworker);
     tworker->tasks_map = hashmapCreate(HASH_WORKER_CAPACITY, int_hash, int_equals);
     tworker->nextseq = 0;
@@ -270,7 +270,7 @@ static void *node_serv_pkt_alloc(node_serv_t *ns)
 {
     packet_t *packet;
 
-    packet = fdhandler_pkt_alloc(ns->mgr_hand);
+    packet = ioasync_pkt_alloc(ns->mgr_hand);
 
     return packet->data + pack_head_len();
 
@@ -289,7 +289,7 @@ static void node_serv_pkt_send(node_serv_t *ns, int type, void *data, int len)
 
     packet->len = len + pack_head_len();
 
-    fdhandler_pkt_send(ns->mgr_hand, packet);
+    ioasync_pkt_send(ns->mgr_hand, packet);
 }
 
 
@@ -539,7 +539,7 @@ int node_serv_init(const char *host)
         return -EINVAL;
     }
 
-    ns->mgr_hand = fdhandler_create(socket, node_serv_handle, node_serv_close, ns);
+    ns->mgr_hand = ioasync_create(socket, node_serv_handle, node_serv_close, ns);
     ns->task_count = 0;
     ns->nextseq = 0;
     ns->worker_count = 0;
