@@ -54,7 +54,7 @@ static void nodemgr_task_pkt_send(node_info_t *node, int type, void *data, int l
 
     packet->len = len + pack_head_len();
 
-    fdhandler_pkt_submit(node->hand, packet);
+    fdhandler_pkt_send(node->hand, packet);
 }
 
 #if 0

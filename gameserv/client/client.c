@@ -107,13 +107,13 @@ static void client_pkt_send(struct client_peer *peer, int type, void *data, int 
     head->seqnum = get_pkt_seq(peer);
 
     packet->len = len + pack_head_len();
-    packet->addr = *((struct sockaddr*)&peer->serv_addr);
+//    packet->addr = *((struct sockaddr*)&peer->serv_addr);
 
     logd("client send packet, dist addr:%s, port:%d. type:%d, len:%d\n", 
             inet_ntoa(peer->serv_addr.sin_addr), 
             ntohs(peer->serv_addr.sin_port), type, len);
 
-    fdhandler_pkt_submit(peer->hand, packet);
+    fdhandler_pkt_sendto(peer->hand, packet, (struct sockaddr*)&peer->serv_addr);
 }
 
 

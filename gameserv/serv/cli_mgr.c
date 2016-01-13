@@ -47,10 +47,10 @@ static void client_pkt_sendto(cli_mgr_t *cm, int type,
     head->seqnum = cm->nextseq++;
 
     packet->len = len + pack_head_len();
-    packet->addr = *to;
+//    packet->addr = *to;
 
     dump_data("client mgr send data", packet->data, packet->len);
-    fdhandler_pkt_submit(cm->hand, packet);
+    fdhandler_pkt_sendto(cm->hand, packet, to);
 }
 
 

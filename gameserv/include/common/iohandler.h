@@ -6,8 +6,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-
-
 /* A looper_t object is used to monitor activity on one or more
  * file descriptors (e.g sockets).
  *
@@ -100,19 +98,68 @@ int looper_exec(looper_t* l);
  **/
 
 typedef struct _packet   packet_t;
-#define  MAX_PAYLOAD 		(4000) 
+
+
+#define MAX_PAYLOAD 		(4000) 
+#define SOCKADDR_LEN        (16)    /* equals of sizeof(struct sockaddr_in) */
+#define MCASTS_COUNT        (8)
+#define MCASTS_PAYLOAD      (MAX_PAYLOAD - MCASTS_COUNT * SOCKADDR_LEN - 4)
+#define UCASTS_PAYLOAD      (MAX_PAYLOAD - SOCKADDR_LEN)
+
+
+enum _packet_type {
+    TYPE_NORMAL,
+    TYPE_UCAST,
+    TYPE_MCAST,
+};
 
 struct _packet {
     packet_t* next;
-    int refcount;
-    union {
-        uint32_t channel; 	/*used tcp accept only*/
-        struct sockaddr addr; 	/*used udp only*/
-    };
+    int type;
 
     int len;
-    uint8_t data[MAX_PAYLOAD];
+    union {
+        struct {
+            uint8_t data[MCASTS_PAYLOAD];   /* It must be placed in first */
+            int count;
+            struct sockaddr addr[MCASTS_COUNT]; 
+        } mcast;     /*used for Multicast */
+        struct {
+            uint8_t data[UCASTS_PAYLOAD];  /* It must be placed in first */
+            struct sockaddr addr; 	/*used udp only*/
+        } ucast;  /*used for Unicast*/
+
+        uint8_t data[MAX_PAYLOAD];
+    };
 };
+
+#if 0
+static inline void *packet_data(packet_t *p)
+{
+    switch(p->type){
+        case TYPE_MCAST:
+            return p->mcast.data;
+        case TYPE_UCAST:
+            return p->ucast.data;
+        case TYPE_NORMAL:
+        default:
+            return p->data;
+    }
+}
+
+static inline struct sockaddr *get_packet_addr(packet_t *p)
+{
+    switch(p->type){
+        case TYPE_MCAST:
+            return &p->mcast.addr;
+        case TYPE_UCAST:
+            return &p->ucast.addr;
+        case TYPE_NORMAL:
+        default:
+            return NULL;
+    }
+}
+#endif
 
 #define data_to_packet(ptr)  \
     node_to_item(ptr, packet_t, data)
@@ -205,17 +252,20 @@ struct fdhandler_list {
 
 
 packet_t *fdhandler_pkt_alloc(fdhandler_t *f);
-packet_t *fdhandler_pkt_get(fdhandler_t *f, packet_t *buf);
 void fdhandler_pkt_free(fdhandler_t *f, packet_t *buf);
-void fdhandler_pkt_submit(fdhandler_t *f, packet_t *buf);
+
+void fdhandler_pkt_send(fdhandler_t *f, packet_t *p);
+void fdhandler_pkt_sendto(fdhandler_t *f, packet_t *p, struct sockaddr *to);
+void fdhandler_pkt_multicast(fdhandler_t *f, packet_t *p, struct sockaddr *dstptr, int count);
+
+void fdhandler_send(fdhandler_t *f, const uint8_t *data, int len);
+void fdhandler_sendto(fdhandler_t *f, const uint8_t *data, int len, void *to);
 
 void fdhandler_remove(fdhandler_t*  f);
 void fdhandler_prepend(fdhandler_t*  f, fdhandler_t**  list);
 void fdhandler_list_init(fdhandler_list_t* list, looper_t* looper);
 void fdhandler_close(fdhandler_t*  f);
 void fdhandler_shutdown(fdhandler_t*  f);
-void fdhandler_send(fdhandler_t *f, const uint8_t *data, int len);
-void fdhandler_sendto(fdhandler_t *f, const uint8_t *data, int len, void *to);
 
 fdhandler_t* fdhandler_create(int fd, handle_func hand_fn, close_func close_fn, void *data);
 fdhandler_t* fdhandler_udp_create(int fd, handlefrom_func hand_fn, close_func close_fn, void *data);

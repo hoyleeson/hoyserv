@@ -437,14 +437,7 @@ static packet_t* packet_alloc(void)
 
     p->next    = NULL;
     p->len     = 0;
-    p->channel = 0;
-    p->refcount = 1;
-    return p;
-}
-
-static packet_t* packet_get(packet_t* p)
-{
-    p->refcount++;
+    p->type    = TYPE_NORMAL;
     return p;
 }
 
@@ -455,6 +448,7 @@ static packet_t* packet_get(packet_t* p)
 static void packet_free(packet_t*  *ppacket)
 {
     pthread_mutex_lock(&packets_lock);
+
     packet_t* p = *ppacket;
     if (p) {
         p->next       = _free_packets;
@@ -516,7 +510,7 @@ static void receiver_post(receiver_t*  r, packet_t*  p)
  * this will also prevent further handleing to the
  * receiver.
  */
-static __inline__ void receiver_close(receiver_t*  r)
+static inline void receiver_close(receiver_t*  r)
 {
     if (r->close) {
         r->close(r->user);
@@ -658,6 +652,7 @@ void fdhandler_send(fdhandler_t *f, const uint8_t *data, int len)
     memcpy(p->data, data, len);
     p->len = len;
 
+    p->type = TYPE_NORMAL;
     fdhandler_enqueue(f, p);
 }
 
@@ -667,10 +662,11 @@ void fdhandler_sendto(fdhandler_t *f, const uint8_t *data, int len, void *to)
     struct sockaddr *addr = (struct sockaddr *)to;
 
     p = packet_alloc();
-    memcpy(p->data, data, len);
+    memcpy(p->ucast.data, data, len);
     p->len = len;
-    p->addr = *addr;
+    p->ucast.addr = *addr;
 
+    p->type = TYPE_UCAST;
     fdhandler_enqueue(f, p);
 }
 
@@ -679,18 +675,30 @@ packet_t *fdhandler_pkt_alloc(fdhandler_t *f)
     return packet_alloc();
 }
 
-packet_t *fdhandler_pkt_get(fdhandler_t *f, packet_t *p)
-{
-    return packet_get(p);
-}
-
 void fdhandler_pkt_free(fdhandler_t *f, packet_t *p)
 {
     packet_free(&p);
 }
 
-void fdhandler_pkt_submit(fdhandler_t *f, packet_t *p)
+void fdhandler_pkt_send(fdhandler_t *f, packet_t *p)
 {
+    p->type = TYPE_NORMAL;
+    fdhandler_enqueue(f, p);
+}
+
+void fdhandler_pkt_sendto(fdhandler_t *f, packet_t *p, struct sockaddr *to)
+{
+    p->ucast.addr = *to;
+    p->type = TYPE_UCAST;
+    fdhandler_enqueue(f, p);
+}
+
+void fdhandler_pkt_multicast(fdhandler_t *f, packet_t *p,
+        struct sockaddr *to, int count)
+{
+    p->mcast.count = count;
+    memcpy(&p->mcast.addr, to, count * sizeof(struct sockaddr));
+    p->type = TYPE_MCAST;
     fdhandler_enqueue(f, p);
 }
 
@@ -703,18 +711,19 @@ static int fdhandler_read(fdhandler_t*  f)
             p->len = fd_read(f->fd, p->data, MAX_PAYLOAD);
             break;
         case HANDLER_TYPE_UDP:
-            {
-                struct sockaddr src_addr;
-                socklen_t addrlen = sizeof(struct sockaddr_in);
-                bzero(&src_addr, sizeof(src_addr));
-                p->len = recvfrom(f->fd, p->data, MAX_PAYLOAD, 0, &src_addr, &addrlen);
-                p->addr = src_addr;
-                break;
-            }
-        case HANDLER_TYPE_TCP_ACCEPT:
-            p->len = 1;
-            p->channel = fd_accept(f->fd);
+        {
+            socklen_t addrlen = sizeof(struct sockaddr_in);
+            bzero(&p->ucast.addr, sizeof(p->ucast.addr));
+            p->len = recvfrom(f->fd, p->ucast.data, MAX_PAYLOAD, 0, &p->ucast.addr, &addrlen);
             break;
+        }
+        case HANDLER_TYPE_TCP_ACCEPT:
+        {
+            int channel = fd_accept(f->fd);
+            memcpy(p->data, &channel, sizeof(int));
+            p->len = sizeof(int);
+            break;
+        }
         default:
             p->len = -1;
             break;
@@ -752,9 +761,20 @@ static int fdhandler_write_packet(fdhandler_t* f, packet_t *p)
                 break;
             }
         case HANDLER_TYPE_UDP:
-            len = sendto(f->fd, p->data, p->len, 0, &p->addr, sizeof(struct sockaddr));
-            if(len < 0)
-                goto fail;
+            if(p->type == TYPE_MCAST) {
+                int i = 0;
+                for(i=0; i<p->mcast.count; i++) {
+                    len = sendto(f->fd, p->mcast.data, p->len, 0, 
+                            &p->mcast.addr[i], sizeof(struct sockaddr));
+                    if(len < 0)
+                        goto fail;               
+                }
+            } else {
+                len = sendto(f->fd, p->ucast.data, p->len, 0, 
+                        &p->ucast.addr, sizeof(struct sockaddr));
+                if(len < 0)
+                    goto fail;
+            }
             break;
         case HANDLER_TYPE_TCP_ACCEPT:
         default:
@@ -864,7 +884,7 @@ fdhandler_t* fdhandler_create(int fd, handle_func hand_fn, close_func close_fn, 
 static void udp_post_func(receiver_t *r, packet_t *p)
 {
     if(r->handlefrom)
-        r->handlefrom(r->user, p->data, p->len, &p->addr);
+        r->handlefrom(r->user, p->ucast.data, p->len, &p->ucast.addr);
 
     packet_free(&p);
 }
@@ -887,8 +907,9 @@ fdhandler_t* fdhandler_udp_create(int fd, handlefrom_func handfrom_fn,
 
 static void accept_post_func(receiver_t *r, packet_t *p)
 {
+    int channel = ((int *)p->data)[0];
     if(r->accept)
-        r->accept(r->user, (int)p->channel);
+        r->accept(r->user, channel);
 
     packet_free(&p);
 }

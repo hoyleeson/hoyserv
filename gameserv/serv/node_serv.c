@@ -101,6 +101,7 @@ void *task_worker_pkt_alloc(task_t *task)
 
 }
 
+
 void task_worker_pkt_sendto(task_t *task, int type, 
         void *data, int len, struct sockaddr *to)
 {
@@ -115,12 +116,34 @@ void task_worker_pkt_sendto(task_t *task, int type,
     head->seqnum = worker->nextseq++;
 
     packet->len = len + pack_head_len();
-    packet->addr = *to;
+//    packet->addr = *to;
 
     dump_data("task worker send data", data, len);
 
-    fdhandler_pkt_submit(worker->hand, packet);
+    fdhandler_pkt_sendto(worker->hand, packet, to);
 }
+
+
+void task_worker_pkt_multicast(task_t *task, int type, 
+        void *data, int len, struct sockaddr *dst_ptr, int count)
+{
+    packet_t *packet;
+    pack_head_t *head;
+    task_worker_t *worker = task->worker;
+
+    head = (pack_head_t *)((uint8_t *)data - pack_head_len());
+    packet = data_to_packet(head);
+
+    init_pack(head, type, len);
+    head->seqnum = worker->nextseq++;
+
+    packet->len = len + pack_head_len();
+
+    dump_data("task worker multicast data", data, len);
+
+    fdhandler_pkt_multicast(worker->hand, packet, dst_ptr, count);
+}
+
 
 /*XXX*/
 static int task_req_handle(task_worker_t *worker, struct pack_task_req *pack, void *from)
@@ -266,7 +289,7 @@ static void node_serv_pkt_send(node_serv_t *ns, int type, void *data, int len)
 
     packet->len = len + pack_head_len();
 
-    fdhandler_pkt_submit(ns->mgr_hand, packet);
+    fdhandler_pkt_send(ns->mgr_hand, packet);
 }
 
 

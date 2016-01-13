@@ -29,7 +29,6 @@ struct turn_control_data {
 };
 
 
-
 unsigned long turn_task_assign(node_mgr_t *mgr, group_info_t *group)
 {
     task_handle_t *task;
@@ -237,8 +236,15 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack, void *from
     int i;
     void *data;
     struct turn_task *ttask;
+    struct sockaddr_in dst_addr[GROUP_MAX_USER];
+    int dst_count = 0;
 
     ttask = (struct turn_task *)&task->priv_data;
+
+    /* FIXME:XXX */
+    data = task_worker_pkt_alloc(task); 
+    memcpy(data, pack->data, pack->datalen);
+
 
     for(i=0; i<ttask->cli_count; i++) {
         struct sockaddr_in *addr;
@@ -258,18 +264,16 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack, void *from
         if(ttask->cli[i].state != STATE_RUNNING)
             continue;
 
-        addr = &ttask->cli[i].addr;
+       dst_addr[dst_count++] = ttask->cli[i].addr;
 
-        logd("[%d] turn pack to user:%d, addr:%s, port:%d\n", i, ttask->cli[i].userid, 
-                inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
-
-        /* FIXME:XXX */
-        data = task_worker_pkt_alloc(task); 
-        memcpy(data, pack->data, pack->datalen);
-
-        task_worker_pkt_sendto(task, MSG_TURN_PACK, 
-                data, pack->datalen, (struct sockaddr *)&(ttask->cli[i].addr));
+/*
+ *     logd("[%d] turn pack to user:%d, addr:%s, port:%d\n", i, ttask->cli[i].userid, 
+ *               inet_ntoa(addr->sin_addr), ntohs(addr->sin_port));
+ */
     }
+
+    task_worker_pkt_multicast(task, MSG_TURN_PACK, 
+            data, pack->datalen, (struct sockaddr *)&dst_addr, dst_count);
 
     return 0;
 }
