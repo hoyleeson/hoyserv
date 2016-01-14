@@ -27,7 +27,7 @@ static void *client_pkt_alloc(cli_mgr_t *cm)
 {
     packet_t *packet;
 
-    packet = fdhandler_pkt_alloc(cm->hand);
+    packet = ioasync_pkt_alloc(cm->hand);
 
     return packet->data + pack_head_len();
 
@@ -47,10 +47,10 @@ static void client_pkt_sendto(cli_mgr_t *cm, int type,
     head->seqnum = cm->nextseq++;
 
     packet->len = len + pack_head_len();
-    packet->addr = *to;
+//    packet->addr = *to;
 
     dump_data("client mgr send data", packet->data, packet->len);
-    fdhandler_pkt_submit(cm->hand, packet);
+    ioasync_pkt_sendto(cm->hand, packet, to);
 }
 
 
@@ -551,7 +551,7 @@ cli_mgr_t *cli_mgr_init(node_mgr_t *nodemgr)
     cm->node_mgr = nodemgr;
 
     clifd = create_cli_mgr_channel();
-    cm->hand = fdhandler_udp_create(clifd, cli_mgr_handle, cli_mgr_close, cm);
+    cm->hand = ioasync_udp_create(clifd, cli_mgr_handle, cli_mgr_close, cm);
     cm->user_map = hashmapCreate(HASH_USER_CAPACITY, int_hash, int_equals);
     cm->group_map = hashmapCreate(HASH_GROUP_CAPACITY, int_hash, int_equals);
     pthread_mutex_init(&cm->lock, NULL);
