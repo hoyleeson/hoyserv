@@ -171,7 +171,7 @@ static void timerfd_receive(timer_base_t* c, uint8_t *data, int len)
 
 static void timerfd_close(timer_base_t* c)
 {
-    logd("%s: client %p (%d)", __FUNCTION__, c, c->ioasync->fd);
+    logd("%s: client %p.\n", __FUNCTION__, c);
 
     /* no need to shutdown the FDHandler */
     c->ioasync = NULL;

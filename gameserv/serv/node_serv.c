@@ -241,7 +241,7 @@ static task_worker_t *create_task_worker(node_serv_t *ns)
     tworker->task_count = 0;
     tworker->owner = ns;
 
-    tworker->hand = ioasync_udp_create(sock, task_worker_handle,
+    tworker->hand = ioasync_udp_create_exclusive(sock, task_worker_handle,
             task_worker_close, tworker);
     tworker->tasks_map = hashmapCreate(HASH_WORKER_CAPACITY, int_hash, int_equals);
     tworker->nextseq = 0;

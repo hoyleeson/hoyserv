@@ -589,15 +589,7 @@ static void cli_task_close(void *user)
 
 static void *client_thread_handle(void *args)
 {
-    struct client *cli = &_client;
-
-    for (;;) {
-        if(!cli->running)
-            break;
-
-        iohandler_once();
-    }
-
+    iohandler_loop(); 
     return 0;
 }
 
@@ -684,6 +676,14 @@ int client_init(const char *host, int mode, event_cb callback)
         return ret;
 
     return 0;
+}
+
+void client_stop(void)
+{
+    struct client *cli = &_client;
+
+    cli->running = 0;
+    iohandler_done();
 }
 
 int client_state_save(struct cli_context_state *state)

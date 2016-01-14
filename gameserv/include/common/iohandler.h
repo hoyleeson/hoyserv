@@ -6,89 +6,6 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 
-/* A looper_t object is used to monitor activity on one or more
- * file descriptors (e.g sockets).
- *
- * - call looper_add() to register a function that will be
- *   called when events happen on the file descriptor.
- *
- * - call looper_enable() or looper_disable() to enable/disable
- *   the set of monitored events for a given file descriptor.
- *
- * - call looper_del() to unregister a file descriptor.
- *   this does *not* close the file descriptor.
- *
- * Note that you can only provide a single function to handle
- * all events related to a given file descriptor.
-
- * You can call looper_enable/_disable/_del within a function
- * callback.
- */
-
-/* the current implementation uses Linux's epoll facility
- * the event mask we use are simply combinations of EPOLLIN
- * EPOLLOUT, EPOLLHUP and EPOLLERR
- */
-
-#define  MAX_CHANNELS  16
-#define  MAX_EVENTS    (MAX_CHANNELS+1)  /* each channel + the serial fd */
-
-/* the event handler function type, 'user' is a user-specific
- * opaque pointer passed to looper_add().
- */
-typedef void (*event_fn)(void*  user, int  events);
-
-/* bit flags for the loop_hook_t structure.
- *
- * HOOK_PENDING means that an event happened on the
- * corresponding file descriptor.
- *
- * HOOK_CLOSING is used to delay-close monitored
- * file descriptors.
- */
-enum {
-    HOOK_PENDING = (1 << 0),
-    HOOK_CLOSING = (1 << 1),
-};
-
-/* A loop_hook_t structure is used to monitor a given
- * file descriptor and record its event handler.
- */
-typedef struct {
-    int        fd;
-    int        wanted;  /* events we are monitoring */
-    int        events;  /* events that occured */
-    int        state;   /* see HOOK_XXX constants */
-    void*      ev_user; /* user-provided handler parameter */
-    event_fn  ev_func; /* event handler callback */
-} loop_hook_t;
-
-/* looper_t is the main object modeling a looper object
-*/
-typedef struct {
-    int epoll_fd;
-    int num_fds;
-    int max_fds;
-
-    loop_hook_t*       	hooks;
-    struct epoll_event* events;
-    int ctl_socks[2];
-
-    pthread_mutex_t 	lock;
-} looper_t;
-
-
-void looper_init(looper_t*  l);
-void looper_done(looper_t*  l);
-loop_hook_t* looper_find(looper_t*  l, int  fd);
-void looper_grow(looper_t*  l);
-void looper_add(looper_t*  l, int  fd, event_fn  func, void*  user);
-void looper_del(looper_t*  l, int  fd);
-void looper_enable(looper_t*  l, int  fd, int  events);
-void looper_disable(looper_t*  l, int  fd, int  events);
-void looper_loop(looper_t*  l);
-int looper_exec(looper_t* l);
-
 
 /** PACKETS
  **
@@ -96,7 +13,6 @@ int looper_exec(looper_t* l);
  ** corresponding file descriptor. We use linked list of packet_t
  ** objects to do this.
  **/
-
 typedef struct _packet   packet_t;
 
 
@@ -105,7 +21,6 @@ typedef struct _packet   packet_t;
 #define MCASTS_COUNT        (8)
 #define MCASTS_PAYLOAD      (MAX_PAYLOAD - MCASTS_COUNT * SOCKADDR_LEN - 4)
 #define UCASTS_PAYLOAD      (MAX_PAYLOAD - SOCKADDR_LEN)
-
 
 enum _packet_type {
     TYPE_NORMAL,
@@ -133,34 +48,6 @@ struct _packet {
     };
 };
 
-#if 0
-static inline void *packet_data(packet_t *p)
-{
-    switch(p->type){
-        case TYPE_MCAST:
-            return p->mcast.data;
-        case TYPE_UCAST:
-            return p->ucast.data;
-        case TYPE_NORMAL:
-        default:
-            return p->data;
-    }
-}
-
-static inline struct sockaddr *get_packet_addr(packet_t *p)
-{
-    switch(p->type){
-        case TYPE_MCAST:
-            return &p->mcast.addr;
-        case TYPE_UCAST:
-            return &p->ucast.addr;
-        case TYPE_NORMAL:
-        default:
-            return NULL;
-    }
-}
-#endif
-
 #define data_to_packet(ptr)  \
     node_to_item(ptr, packet_t, data)
 
@@ -182,18 +69,6 @@ typedef void (*handlefrom_func) (void* user, uint8_t *data, int len, void *from)
 typedef void (*accept_func) (void* user, int acceptfd);
 typedef void (*close_func)(void*  user);
 
-typedef struct {
-    void*      user;
-    post_func   post;
-    close_func  close;
-    union {
-        handle_func handle; /* used for ioasync_create() */
-        handlefrom_func handlefrom; /* used for ioasync_create() */
-        accept_func accept; /* used for ioasync_create() */
-    };
-} receiver_t;
-
-
 
 /** FD HANDLERS
  **
@@ -211,46 +86,6 @@ typedef struct ioasync_list  ioasync_list_t;
 typedef struct ioasync_ops ioasync_ops_t;
 
 
-enum ioasync_type {
-    HANDLER_TYPE_NORMAL,
-    HANDLER_TYPE_TCP_ACCEPT,
-    HANDLER_TYPE_UDP,
-};
-
-struct ioasync {
-    ioasync_list_t*  list;
-    int    	fd;
-    int 	type;
-    char    closing;
-    receiver_t receiver[1];
-
-    /* queue of outgoing packets */
-    packet_t*     out_first;
-    packet_t**    out_ptail;
-
-    ioasync_t*    next;
-    ioasync_t**   pref;
-    pthread_mutex_t lock;
-};
-
-struct ioasync_list {
-    /* the looper that manages the fds */
-    looper_t*      looper;
-
-    /* list of active ioasync_t objects */
-    ioasync_t*   active;
-
-    /* list of closing ioasync_t objects.
-     * these are waiting to push their
-     * queued packets to the fd before
-     * freeing themselves.
-     */
-    ioasync_t*   closing;
-
-    pthread_mutex_t lock;
-};
-
-
 packet_t *ioasync_pkt_alloc(ioasync_t *f);
 void ioasync_pkt_free(ioasync_t *f, packet_t *buf);
 
@@ -261,19 +96,18 @@ void ioasync_pkt_multicast(ioasync_t *f, packet_t *p, struct sockaddr *dstptr, i
 void ioasync_send(ioasync_t *f, const uint8_t *data, int len);
 void ioasync_sendto(ioasync_t *f, const uint8_t *data, int len, void *to);
 
-void ioasync_remove(ioasync_t*  f);
-void ioasync_prepend(ioasync_t*  f, ioasync_t**  list);
-void ioasync_list_init(ioasync_list_t* list, looper_t* looper);
-void ioasync_close(ioasync_t*  f);
-void ioasync_shutdown(ioasync_t*  f);
-
 ioasync_t *ioasync_create(int fd, handle_func hand_fn, close_func close_fn, void *data);
 ioasync_t *ioasync_udp_create(int fd, handlefrom_func hand_fn, close_func close_fn, void *data);
 ioasync_t *ioasync_accept_create(int fd, accept_func accept_fn, close_func close_fn, void *data);
+ioasync_t* ioasync_udp_create_exclusive(int fd, handlefrom_func handfrom_fn, 
+        close_func close_fn, void *data);
+
+void ioasync_close(ioasync_t*  f);
+void ioasync_shutdown(ioasync_t*  f);
 
 unsigned long iohandler_init(void);
-void iohandler_once(void);
 void iohandler_loop(void);
+void iohandler_done(void);
 
 #endif
 

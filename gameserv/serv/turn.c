@@ -247,7 +247,7 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack, void *from
 
 
     for(i=0; i<ttask->cli_count; i++) {
-        struct sockaddr_in *addr;
+//        struct sockaddr_in *addr;
 
         if(pack->userid == ttask->cli[i].userid) {
             if(ttask->cli[i].state == STATE_PENDING) {

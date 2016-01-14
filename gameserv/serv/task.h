@@ -79,6 +79,9 @@ void *task_worker_pkt_alloc(task_t *task);
 void *task_worker_pkt_get(task_t *task, void *data);
 void task_worker_pkt_free(task_t *task, void *data);
 void task_worker_pkt_sendto(task_t *task, int type, void *data, int len, struct sockaddr *to);
+void task_worker_pkt_multicast(task_t *task, int type, 
+        void *data, int len, struct sockaddr *dst_ptr, int count);
+
 
 void task_protos_init(void);
 
