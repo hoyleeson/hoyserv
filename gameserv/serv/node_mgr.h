@@ -15,7 +15,7 @@ typedef struct _node_info node_info_t;
 
 struct _node_info {
     int fd;
-    fdhandler_t *hand;
+    ioasync_t *hand;
     int nextseq;
     response_wait_t waits;
     int task_count;
@@ -32,7 +32,7 @@ struct _node_info {
 struct _node_mgr {
     int taskids;
     int node_count;
-    fdhandler_t *hand;
+    ioasync_t *hand;
 
     struct listnode nodelist;
     pthread_mutex_t lock;

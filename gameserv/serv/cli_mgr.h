@@ -48,7 +48,7 @@ struct _group_info {
 typedef struct _cli_mgr {
     uint32_t uid_pool; 	/* user id pool */
     uint32_t gid_pool; 	/* group id pool */
-    fdhandler_t *hand;
+    ioasync_t *hand;
 
     Hashmap *user_map;
     Hashmap *group_map;
