@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <common/fake_atomic.h>
 
 
 /** PACKETS
@@ -16,7 +17,7 @@
 typedef struct _packet   packet_t;
 
 
-#define MAX_PAYLOAD 		(4000) 
+#define MAX_PAYLOAD 		(2000) 
 #define SOCKADDR_LEN        (16)    /* equals of sizeof(struct sockaddr_in) */
 #define MCASTS_COUNT        (8)
 #define MCASTS_PAYLOAD      (MAX_PAYLOAD - MCASTS_COUNT * SOCKADDR_LEN - 4)
@@ -30,6 +31,7 @@ enum _packet_type {
 
 struct _packet {
     packet_t* next;
+    fake_atomic_t refcount;
     int type;
 
     int len;
@@ -87,7 +89,8 @@ typedef struct ioasync_ops ioasync_ops_t;
 
 
 packet_t *ioasync_pkt_alloc(ioasync_t *f);
-void ioasync_pkt_free(ioasync_t *f, packet_t *buf);
+packet_t *ioasync_pkt_get(packet_t *buf);
+void ioasync_pkt_free(packet_t *buf);
 
 void ioasync_pkt_send(ioasync_t *f, packet_t *p);
 void ioasync_pkt_sendto(ioasync_t *f, packet_t *p, struct sockaddr *to);

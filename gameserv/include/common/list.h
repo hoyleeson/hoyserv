@@ -40,6 +40,11 @@ struct listnode
 #define list_for_each(node, list) \
     for (node = (list)->next; node != (list); node = node->next)
 
+#define list_for_each_safe(pos, n, head) \
+	for (pos = (head)->next, n = pos->next; pos != (head); \
+		pos = n, n = pos->next)
+
+
 #define list_for_each_reverse(node, list) \
     for (node = (list)->prev; node != (list); node = node->prev)
 
@@ -48,10 +53,23 @@ struct listnode
 	     &pos->member != (head); 	\
 	     pos = node_to_item(pos->member.next, typeof(*pos), member))
 
+#define list_for_each_entry_reverse(pos, head, member)				\
+	for (pos = node_to_item((head)->prev, typeof(*pos), member);	\
+	     &pos->member != (head); 	\
+	     pos = node_to_item(pos->member.prev, typeof(*pos), member))
+
+#define list_for_each_entry_safe(pos, n, head, member)				\
+	for (pos = node_to_item((head)->next, typeof(*pos), member),	\
+		n = node_to_item(pos->member.next, typeof(*pos), member);	\
+	     &pos->member != (head); 	\
+	     pos = n, n = node_to_item(n->member.next, typeof(*n), member))
+
+
 
 
 void list_init(struct listnode *list);
 void list_add_tail(struct listnode *list, struct listnode *item);
+void list_add(struct listnode *list, struct listnode *item);
 void list_remove(struct listnode *item);
 
 #define list_empty(list) ((list) == (list)->next)

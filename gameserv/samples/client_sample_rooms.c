@@ -267,7 +267,7 @@ int main(int argc, char **argv)
         }
     }
 
-    ret = client_logout();
+    client_logout();
     printf("exit.\n");
     return 0;
 }

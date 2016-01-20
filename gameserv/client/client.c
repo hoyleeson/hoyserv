@@ -17,21 +17,29 @@
 #include <common/pack.h>
 #include <common/sockets.h>
 #include <common/log.h>
+#include <common/data_frag.h>
 
 #include "client.h"
 
-#define FRAGMENT_MAX_LEN 	(512)
+
+#define CLI_FRAGMENT_MAX_LEN 	(512)
+#define CLI_DATA_MAX_LEN        (4*1024*1024)
+
 
 struct pack_cli_msg {
     struct pack_task_req base;
 
     uint8_t type;
+
+    /*struct fragment {*/
+    uint16_t seq;
     uint8_t frag:1;
-    uint8_t frag_count:7;
-    uint16_t frag_offset;
-    uint8_t seq;
-    uint32_t datalen;
+    uint8_t mf:1;
+    uint8_t _reserved:6;
+    uint32_t frag_ofs:22;    /* max data len: 4MB */
+    uint32_t datalen:10;     /* packet len */
     uint8_t data[0];
+    /*}; */
 };
 
 
@@ -63,6 +71,7 @@ struct client {
     event_cb callback;
     response_wait_t waits;
     int running;
+    data_frags_t *frags;
 
     struct client_peer control; 	/* connect with center serv, taskid is invaild */
     struct client_peer task;
@@ -79,7 +88,6 @@ static void *client_pkt_alloc(struct client_peer *peer)
     packet = ioasync_pkt_alloc(peer->hand);
 
     return packet->data + pack_head_len();
-
 }
 
 static int get_pkt_seq(struct client_peer *peer)
@@ -354,7 +362,6 @@ void client_checkin(void)
     task_req_pack_send(cli, p, sizeof(*p));
 }
 
-
 void client_send_command(void *data, int len)
 {
     struct pack_cli_msg *p;
@@ -367,28 +374,44 @@ void client_send_command(void *data, int len)
     p = create_task_req_pack(cli, TASK_TURN);
 
     p->type = PACK_COMMAND;
+    p->frag = 0;
     p->datalen = len;
     memcpy(p->data, data, len);
 
     task_req_pack_send(cli, p, sizeof(*p) + len);
 }
 
-void client_send_state_img(void *data, int len)
+static void cli_frag_output(void *opaque, data_vec_t *v)
 {
     struct pack_cli_msg *p;
+    struct client *cli = (struct client *)opaque;
+
+    p = create_task_req_pack(cli, TASK_TURN);
+    p->type = PACK_STATE_IMG;
+    p->seq = v->seq;
+    p->frag = 1;
+    p->mf = v->mf;
+    p->frag_ofs = v->ofs;
+    p->datalen = v->len;
+    memcpy(p->data, v->data, v->len);
+
+    logd("pack state img output: seq: %d, mf:%d, offset:%d, datalen:%d\n", 
+            p->seq, p->mf, p->frag_ofs, p->datalen);
+
+    task_req_pack_send(cli, p, sizeof(*p) + v->len);
+}
+
+void client_send_state_img(void *data, int len)
+{
     struct client *cli = &_client;
 
     if(cli->task.taskid == INVAILD_TASKID) {
         return;	
     }
 
-    p = create_task_req_pack(cli, TASK_TURN);
+    logd("client send state img, len:%d\n", len);
 
-    p->type = PACK_STATE_IMG;
-    p->datalen = len;
-    memcpy(p->data, data, len);
-
-    task_req_pack_send(cli, p, sizeof(*p) + len);
+    data_frag(cli->frags, data, len);
 }
 
 
@@ -506,18 +529,59 @@ static void pack_command_handle(struct pack_cli_msg *msg)
     }
 }
 
-static void pack_state_img_handle(struct pack_cli_msg *msg) 
+static void cli_frag_input(void *opaque, void *data, int len)
 {
-    /*XXX defrag. */
-
     int ret;
-    struct client *cli = &_client;
+    struct client *cli = (struct client *)opaque;
 
-    ret = cli->callback(EVENT_STATE_IMG, (void *)msg->data, (void *)msg->datalen);
+    ret = cli->callback(EVENT_STATE_IMG, (void *)data, (void *)len);
+
     if(ret) {
         loge("client EVENT_STATE_IMG handle fail.\n");	
     }
+}
 
+static packet_t *payload_to_packet(void *p)
+{
+    packet_t *packet;
+    pack_head_t *head;
+
+    head = (pack_head_t *)((uint8_t *)p - pack_head_len());
+    packet = data_to_packet(head);
+
+    return packet;
+}
+
+
+static void cli_frag_pkt_free(void *opaque, void *frag_pkt)
+{
+    packet_t *packet;
+    struct client *cli = (struct client *)opaque;
+
+    packet = payload_to_packet(frag_pkt);
+
+    ioasync_pkt_free(packet);
+}
+
+static void pack_state_img_handle(struct pack_cli_msg *msg) 
+{
+    /*XXX defrag. */
+    struct client *cli = &_client;
+    data_vec_t v;
+    packet_t *packet;
+
+    v.seq = msg->seq;
+    v.mf = msg->mf;
+    v.ofs = msg->frag_ofs;
+    v.data = msg->data;
+    v.len = msg->datalen;
+
+    logd("pack state img info: seq: %d, mf:%d, offset:%d, datalen:%d\n", 
+            msg->seq, msg->mf, msg->frag_ofs, msg->datalen);
+    packet = payload_to_packet(msg);
+    ioasync_pkt_get(packet);
+
+    data_defrag(cli->frags, &v, msg);
 }
 
 static void cli_pack_handle(struct pack_cli_msg *msg) 
@@ -639,6 +703,8 @@ int client_init(const char *host, int mode, event_cb callback)
     cli->callback = callback;
     cli->mode = mode;
     pthread_mutex_init(&cli->lock, NULL);
+    cli->frags = data_frag_init(CLI_FRAGMENT_MAX_LEN, cli_frag_input, 
+            cli_frag_output, cli_frag_pkt_free, cli);
 
     /*	if(mode == CLI_MODE_CONTROL_ONLY || mode == CLI_MODE_TASK_ONLY) { */
     /* dynamic alloc port by system. */

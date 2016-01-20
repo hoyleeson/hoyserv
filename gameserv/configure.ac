@@ -86,5 +86,4 @@ AC_CONFIG_FILES([Makefile
 				 include/Makefile include/common/Makefile 
 				 serv/Makefile ])
 
-
 AC_OUTPUT
