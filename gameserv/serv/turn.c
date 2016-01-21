@@ -245,7 +245,6 @@ static int turn_task_handle(task_t *task, struct pack_task_req *pack, void *from
     data = task_worker_pkt_alloc(task); 
     memcpy(data, pack->data, pack->datalen);
 
-
     for(i=0; i<ttask->cli_count; i++) {
 //        struct sockaddr_in *addr;
 

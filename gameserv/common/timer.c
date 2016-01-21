@@ -126,6 +126,17 @@ struct timer_item *new_timer(void (*fn)(unsigned long), unsigned long data)
     return timer;
 }
 
+void init_timer(struct timer_item *timer,
+        void (*fn)(unsigned long), unsigned long data) 
+{
+    timer->clock = &_clock;
+    timer->expires = 0;
+    timer->func = fn;
+    timer->data = data;
+    timer->next = NULL;
+}
+
+
 int64_t get_clock_ns(void) {
     //struct timeval tv;
     //gettimeofday(&tv, NULL);

@@ -60,8 +60,8 @@ static inline void dump_data(const char *desc, void *data, int len)
 #endif
 
 /* XXX */
-//#ifdef DEBUG
-#if 1
+//#if 1
+#ifdef DEBUG
 #define  logd( fmt... )   LOGD(fmt)
 #else
 #define  logd( fmt... )

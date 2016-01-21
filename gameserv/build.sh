@@ -12,8 +12,8 @@ if [ -e $INSTAL_DIR ]; then
 	mkdir -p $INSTAL_DIR
 fi
 
-./configure --enable-debug --prefix=$INSTAL_DIR 
-#--enable-verbose 
+./configure --prefix=$INSTAL_DIR 
+#--enable-verbose  --enable-debug
 
 make
 make install

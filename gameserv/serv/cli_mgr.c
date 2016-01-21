@@ -148,14 +148,6 @@ static user_info_t *cli_mgr_get_group(uint32_t groupid)
 }
 #endif
 
-void client_user_dead(hbeat_node_t *hbeat)
-{
-    user_info_t *user;
-
-    user = node_to_item(hbeat, user_info_t, hbeat);
-    logi("user %d dead.\n", user->userid);
-}
-
 static void login_result_response(cli_mgr_t *cm, 
         user_info_t *uinfo, struct sockaddr *to)
 {
@@ -180,6 +172,7 @@ static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
     uinfo->addr = *from;
     uinfo->group = NULL;
     uinfo->state = 0;
+    uinfo->mgr = cm;
     hbeat_add_to_god(&cm->hbeat_god, &uinfo->hbeat);
 
     cli_mgr_add_user(cm, uinfo);
@@ -204,6 +197,16 @@ static int cmd_logout_handle(cli_mgr_t *cm, uint32_t uid)
     hbeat_rm_from_god(&cm->hbeat_god, &uinfo->hbeat);
     free(uinfo);
     return 0;
+}
+
+void client_user_dead(hbeat_node_t *hbeat)
+{
+    user_info_t *user;
+
+    user = node_to_item(hbeat, user_info_t, hbeat);
+    logi("user %d dead.\n", user->userid);
+
+    cmd_logout_handle(user->mgr, user->userid); /* XXX */
 }
 
 

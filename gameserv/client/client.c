@@ -413,6 +413,7 @@ static void cli_frag_output(void *opaque, data_vec_t *v)
             p->seq, p->mf, p->frag_ofs, p->datalen);
 
     task_req_pack_send(cli, p, sizeof(*p) + v->len);
+usleep(1); /* XXX */
 }
 
 void client_send_state_img(void *data, int len)

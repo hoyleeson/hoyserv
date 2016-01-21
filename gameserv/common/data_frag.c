@@ -26,7 +26,9 @@ typedef struct _frag_node {
 struct data_frags {
     int fraglen;
     int nextseq;
+    int stat_timeout;
     Hashmap *maps;
+
     void (*input)(void *opaque, void *data, int len);
     void (*output)(void *opaque, data_vec_t *v);
     void (*free)(void *opaque, void *frag_pkt);
@@ -40,7 +42,7 @@ typedef struct _frag_queue {
     int recv_len;
     struct listnode list;
     pthread_mutex_t lock;
-    struct timer_item *timer;
+    struct timer_item timer;
     struct data_frags *owner;
 } frag_queue_t;
 
@@ -58,6 +60,7 @@ data_frags_t *data_frag_init(int fraglen,
         return NULL;
 
     frags->fraglen = fraglen;
+    frags->stat_timeout = 0;
     frags->input = input;
     frags->output = output;
     frags->free = free_pkt;
@@ -105,7 +108,6 @@ int data_frag(data_frags_t *frags, void *data, int len)
             v.mf = 0;
 
         frags->output(frags->data, &v);
-
         i++;
     }
 
@@ -149,6 +151,7 @@ static void frag_queue_free(frag_queue_t *fq)
         frag_node_free(frag);
     }
 
+    del_timer(&fq->timer);
     free(fq);
 }
 
@@ -163,9 +166,16 @@ static void rm_frag_queue(data_frags_t *frags, frag_queue_t *fq)
 
 static void defrag_timeout_handle(unsigned long data)
 {
+    data_frags_t *frags;
     frag_queue_t *fq = (frag_queue_t *)data;
 
-    logw("defrag timout, seq:%d\n", fq->id);
+    frags = fq->owner;
+
+    pthread_mutex_lock(&frags->lock);
+    frags->stat_timeout++;
+    pthread_mutex_unlock(&frags->lock);
+
+    logw("defrag timout, seq:%d, (%d times)\n", fq->id, frags->stat_timeout);
     rm_frag_queue(fq->owner, fq);
     frag_queue_free(fq);
 }
@@ -178,11 +188,13 @@ static frag_queue_t *frag_queue_create(data_frags_t *frags, int id)
 
     fq->id = id;
     list_init(&fq->list);
-    fq->timer = new_timer(defrag_timeout_handle, (unsigned long)fq);
     fq->total_len = 0;
     fq->recv_len = 0;
     fq->owner = frags;
     pthread_mutex_init(&fq->lock, NULL);
+
+    init_timer(&fq->timer, defrag_timeout_handle, (unsigned long)fq);
+    add_timer(&fq->timer, get_clock_ns() + DEFRAG_TIMEOUT);
 
     return fq;
 }
@@ -299,8 +311,9 @@ int data_defrag(data_frags_t *frags, data_vec_t *v, void *frag_pkt)
     }
 
     ret = data_frag_queue(fq, frag);
-    if(ret <= 0)
+    if(ret <= 0) {
         return ret;
+    }
 
     /* All data have been successfully received, submit now. */
     len = fq->total_len;

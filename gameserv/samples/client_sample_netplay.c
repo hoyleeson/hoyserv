@@ -21,6 +21,8 @@ int fileseq = 0;
 #define SAVE_FILE_SUFFIX        ".bmp"
 
 int running = 0;
+int pid;
+
 int cli_callback(int event, void *arg1, void *arg2)
 {
     printf("receive event(%d)\n", event);
@@ -42,7 +44,7 @@ int cli_callback(int event, void *arg1, void *arg2)
             int len = (int)arg2;
             int seq = (fileseq++) % 200;
 
-            sprintf(file, "%s/%s%d%s", SAVE_FILE_PATH,
+            sprintf(file, "%s/%d/%s%d%s", SAVE_FILE_PATH, pid,
                     SAVE_FILE_PREFIX, seq, SAVE_FILE_SUFFIX);
 
             fp = fopen(file, "w+");
@@ -74,8 +76,11 @@ int main(int argc, char **argv)
     FILE *fp;
     char imgbuf[DATA_MAX_LEN] = {0};
     int len;
+    char path[32] = {0};
 
     printf("sample netplay enter..\n");
+
+    pid = getpid();
 
     pipe_fd = open(fifo_name, open_mode);  
     ret = read(pipe_fd, &state, sizeof(state));
@@ -91,6 +96,8 @@ int main(int argc, char **argv)
     /* remove path */
     remove(SAVE_FILE_PATH);
     mkdir(SAVE_FILE_PATH, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    sprintf(path, "%s/%d", SAVE_FILE_PATH, pid);
+    mkdir(path, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
 
     while(1) {
         if(running == 0) {
@@ -99,9 +106,9 @@ int main(int argc, char **argv)
             sleep(1);
             continue;
         }
-
-        sprintf(buf, "test hello world.%d.\n", seq++);
-        client_send_command(buf, strlen(buf));
+        len = sprintf(buf, "test hello world.%d.", seq++);
+        buf[len] = 0;
+        client_send_command(buf, len + 1);
 
         fp = fopen(IMG_FILE_NAME, "r");
         if(!fp) {

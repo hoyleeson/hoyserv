@@ -42,13 +42,16 @@ struct timer_item {
 
 typedef void (*timer_func)(unsigned long);
 
+struct timer_item *new_timer(void (*fn)(unsigned long), unsigned long data);
+void init_timer(struct timer_item *timer, void (*fn)(unsigned long), unsigned long data);
+
 void add_timer(struct timer_item *timer, int64_t expires);
 void mod_timer(struct timer_item *timer, int64_t expires);
 void del_timer(struct timer_item *timer);
 void free_timer(struct timer_item *timer);
-struct timer_item *new_timer(void (*fn)(unsigned long), unsigned long data);
 int64_t get_clock_ns(void);
-void timer_init(void);
+
+void timers_init(void);
 void run_timers();
 
 
