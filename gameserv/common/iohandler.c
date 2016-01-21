@@ -186,7 +186,7 @@ static inline void looper_ctl_submit(looper_t* l, void *data, int len)
     pthread_mutex_lock(&l->lock);
     ret = fd_write(l->ctl_socks[0], data, len);
     if(ret < 0)
-        loge("looper ctl command submit fail.\n");
+        loge("looper ctl command submit failed(%d).\n", ret);
     pthread_mutex_unlock(&l->lock);
 }
 
@@ -503,7 +503,7 @@ static int looper_exec(looper_t* l) {
 static void looper_init(looper_t*  l)
 {
     int ret; 
-    int size = MAX_PAYLOAD;
+    int size = MAX_PAYLOAD * 4;
     l->epoll_fd = epoll_create(1);
     l->num_fds  = 0;
     l->max_fds  = 0;

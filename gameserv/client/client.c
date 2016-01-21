@@ -17,10 +17,11 @@
 #include <common/pack.h>
 #include <common/sockets.h>
 #include <common/log.h>
+#include <common/hbeat.h>
+#include <common/timer.h>
 #include <common/data_frag.h>
 
 #include "client.h"
-
 
 #define CLI_FRAGMENT_MAX_LEN 	(512)
 #define CLI_DATA_MAX_LEN        (4*1024*1024)
@@ -72,6 +73,7 @@ struct client {
     response_wait_t waits;
     int running;
     data_frags_t *frags;
+    struct timer_item *hbeat_timer;
 
     struct client_peer control; 	/* connect with center serv, taskid is invaild */
     struct client_peer task;
@@ -124,6 +126,15 @@ static void client_pkt_send(struct client_peer *peer, int type, void *data, int 
     ioasync_pkt_sendto(peer->hand, packet, (struct sockaddr*)&peer->serv_addr);
 }
 
+static void cli_hbeat_start(struct client *cli)
+{
+    add_timer(cli->hbeat_timer, get_clock_ns() + HBEAD_DEAD_TIME);
+}
+
+static void cli_hbeat_stop(struct client *cli)
+{
+    del_timer(cli->hbeat_timer);
+}
 
 int client_login(void)
 {
@@ -146,6 +157,7 @@ int client_login(void)
     cli->userid = userid;
     logd("client login success, userid:%u.\n", userid);
 
+    cli_hbeat_start(cli);
     return 0;
 }
 
@@ -162,6 +174,8 @@ void client_logout(void)
     *userid = cli->userid;
 
     client_pkt_send(&cli->control, MSG_CLI_LOGOUT, userid, sizeof(uint32_t));
+    cli->userid = INVAILD_USERID;
+    cli_hbeat_stop(cli);
 }
 
 
@@ -683,7 +697,25 @@ int client_task_start(void)
     return 0;
 }
 
+static void cli_hbeat_timer_handle(unsigned long data)
+{
+    struct client *cli = (struct client *)data;
+
+    client_hbeat();
+    mod_timer(cli->hbeat_timer, get_clock_ns() + HBEAD_DEAD_TIME);
+}
+
 #define HASH_WAIT_OBJ_CAPACITY 	(256)
+
+int common_init(void)
+{
+    init_global_thpool();
+    iohandler_init();
+    timer_init();
+
+    return 0;
+}
+
 
 int client_init(const char *host, int mode, event_cb callback) 
 {
@@ -695,8 +727,7 @@ int client_init(const char *host, int mode, event_cb callback)
     socklen_t addrlen = sizeof(addr); 	/* used for debug */
     struct client *cli = &_client;
 
-    init_global_thpool();
-    iohandler_init();
+    common_init();
 
     response_wait_init(&cli->waits, HASH_WAIT_OBJ_CAPACITY);
 
@@ -731,6 +762,7 @@ int client_init(const char *host, int mode, event_cb callback)
     cli->userid = INVAILD_USERID;
     cli->groupid = INVAILD_GROUPID;
 
+    cli->hbeat_timer = new_timer(cli_hbeat_timer_handle, (unsigned long)cli);
     cli->control.hand = ioasync_udp_create(sock,
             cli_msg_handle, cli_msg_close, cli);
 
@@ -750,6 +782,7 @@ void client_stop(void)
 
     cli->running = 0;
     iohandler_done();
+    free_timer(cli->hbeat_timer);
 }
 
 int client_state_save(struct cli_context_state *state)
@@ -761,6 +794,9 @@ int client_state_save(struct cli_context_state *state)
     state->taskid  = cli->task.taskid;
     state->addr    = cli->task.serv_addr;
 
+    if(cli->userid != INVAILD_USERID)
+        cli_hbeat_stop(cli);
+
     return 0;
 }
 
@@ -771,6 +807,9 @@ int client_state_load(struct cli_context_state *state)
     cli->groupid 		= state->groupid;
     cli->task.taskid 	= state->taskid;
     cli->task.serv_addr = state->addr;
+
+    if(cli->userid != INVAILD_USERID)
+        cli_hbeat_start(cli);
 
     return 0;
 }

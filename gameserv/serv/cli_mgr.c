@@ -148,6 +148,14 @@ static user_info_t *cli_mgr_get_group(uint32_t groupid)
 }
 #endif
 
+void client_user_dead(hbeat_node_t *hbeat)
+{
+    user_info_t *user;
+
+    user = node_to_item(hbeat, user_info_t, hbeat);
+    logi("user %d dead.\n", user->userid);
+}
+
 static void login_result_response(cli_mgr_t *cm, 
         user_info_t *uinfo, struct sockaddr *to)
 {
@@ -172,7 +180,7 @@ static int cmd_login_handle(cli_mgr_t *cm, struct sockaddr *from)
     uinfo->addr = *from;
     uinfo->group = NULL;
     uinfo->state = 0;
-    uinfo->heard = HBEAT_INIT;
+    hbeat_add_to_god(&cm->hbeat_god, &uinfo->hbeat);
 
     cli_mgr_add_user(cm, uinfo);
 
@@ -193,6 +201,7 @@ static int cmd_logout_handle(cli_mgr_t *cm, uint32_t uid)
         //exit_from_group(); /* XXX */
     }
 
+    hbeat_rm_from_god(&cm->hbeat_god, &uinfo->hbeat);
     free(uinfo);
     return 0;
 }
@@ -222,12 +231,14 @@ static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
     logd("create group request from user:%u.\n", pr->userid);
 
     creater = cli_mgr_get_user(cm, pr->userid);
-    if(!creater)
+    if(!creater) {
+        loge("user %u not found.\n", pr->userid);
         return -EINVAL;
+    }
 
     ginfo = malloc(sizeof(*ginfo));
     if(!ginfo) {
-        return -EINVAL;
+        return -ENOMEM;
     }
 
     ginfo->groupid = cli_mgr_alloc_gid(cm);
@@ -245,6 +256,7 @@ static int cmd_create_group_handle(cli_mgr_t *cm, struct pack_creat_group *pr)
 
     ginfo->turn_handle = turn_task_assign(cm->node_mgr, ginfo);
     if(ginfo->turn_handle == 0) {
+        loge("assign turn task failed.\n");
         goto fail;
     }
 
@@ -445,7 +457,7 @@ static int cmd_hbeat_handle(cli_mgr_t *cm, uint32_t userid)
     if(!uinfo)
         return -EINVAL;
 
-    uinfo->heard = HBEAT_INIT;
+    user_heartbeat(&uinfo->hbeat);
     return 0;
 }
 
@@ -554,6 +566,8 @@ cli_mgr_t *cli_mgr_init(node_mgr_t *nodemgr)
     cm->hand = ioasync_udp_create(clifd, cli_mgr_handle, cli_mgr_close, cm);
     cm->user_map = hashmapCreate(HASH_USER_CAPACITY, int_hash, int_equals);
     cm->group_map = hashmapCreate(HASH_GROUP_CAPACITY, int_hash, int_equals);
+    hbeat_god_init(&cm->hbeat_god, client_user_dead);
+
     pthread_mutex_init(&cm->lock, NULL);
     return cm;
 }

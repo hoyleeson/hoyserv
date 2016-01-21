@@ -6,12 +6,12 @@
 #include <common/list.h>
 #include <common/iohandler.h>
 #include <common/hashmap.h>
+#include <common/hbeat.h>
 
 #include <protos.h>
 
 #include "node_mgr.h"
 
-#define HBEAT_INIT 		(5)
 #define GROUP_MAX_USER 		(8)
 
 typedef struct _user_info user_info_t;
@@ -28,7 +28,7 @@ struct _user_info {
     int state;
     struct sockaddr addr;
     group_info_t *group;
-    int heard;
+    hbeat_node_t hbeat;
 
     struct listnode node;
 };
@@ -58,6 +58,7 @@ typedef struct _cli_mgr {
     node_mgr_t *node_mgr;
     uint16_t nextseq;
     struct listnode group_list;
+    hbeat_god_t hbeat_god;
     pthread_mutex_t lock;
 } cli_mgr_t;
 

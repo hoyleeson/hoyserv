@@ -10,6 +10,7 @@
 #include <common/log.h>
 #include <common/thr_pool.h>
 #include <common/utils.h>
+#include <common/timer.h>
 #include <common/iohandler.h>
 
 #include "serv.h"
@@ -115,6 +116,14 @@ static void do_help(void)
     logi("%s\n", buf);
 }
 
+void common_init(void)
+{
+    init_global_thpool();
+
+    iohandler_init();
+    init_task_protocals();
+    timer_init();
+}
 
 int main(int argc, char **argv)
 {
@@ -145,10 +154,8 @@ int main(int argc, char **argv)
 
     umask(0);
     signals_init();
-    init_global_thpool();
 
-    iohandler_init();
-    init_task_protocals();
+    common_init();
 
     if(mode & SERV_MODE_CENTER_SERV) {
         chost = LOCAL_HOST;

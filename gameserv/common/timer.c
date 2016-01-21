@@ -15,7 +15,6 @@
 
 static timer_base_t _clock;
 
-#define NSEC2SEC 	(1000000000LL)
 
 static void timer_set_interval(struct timer_item *timer, int64_t interval)
 {
@@ -30,7 +29,7 @@ static void timer_set_interval(struct timer_item *timer, int64_t interval)
     itval.it_value.tv_sec = i_sec;
     itval.it_value.tv_nsec = i_nsec;
 
-    logd("timer set interval:sec:%d, nsec:%d", i_sec, i_nsec);
+    logd("timer set interval:sec:%d, nsec:%d\n", i_sec, i_nsec);
     if (timerfd_settime(clock->clkid, 0, &itval, NULL) == -1)
         loge("timer_set_interval: timerfd_settime failed, %d.%d\n", i_sec, i_nsec);
 }
@@ -53,11 +52,11 @@ void add_timer(struct timer_item *timer, int64_t expires) {
     int64_t now = get_clock_ns();
 
     if(expires < now) {
-        loge("warning: expires invaild:%lld", expires);
+        loge("warning: expires invaild:%lld\n", expires);
         return;
     }
 
-    logd("%s: expires:%lld", __func__, expires);
+    logd("%s: expires:%lld\n", __func__, expires);
     /* add the timer in the sorted list */
     /* NOTE: this code must be signal safe because
        qtimer_expired() can be called from a signal. */
@@ -83,7 +82,7 @@ void del_timer(struct timer_item *timer) {
     timer_base_t *clock = timer->clock;
     struct timer_item **pt, *t;
 
-    logd("del timer");
+    logd("del timer\n");
     pt = &clock->timers;
 
     for(;;) {
@@ -147,11 +146,14 @@ void run_timers() {
     if(!clock->enable)
         return;
 
-    logd("timer running, fd:%d", clock->clkid);
+    logd("timer running, fd:%d\n", clock->clkid);
     curr_time = get_clock_ns();
     pt = &clock->timers;
     for(;;) {
         t = *pt;
+        if(!t)
+            break;
+
         if(!timer_expired(t, curr_time)) {
             timer_set_expires(t, t->expires);
             break;
@@ -165,7 +167,7 @@ void run_timers() {
 
 static void timerfd_receive(timer_base_t* c, uint8_t *data, int len)
 {
-    logd("%s: %p (%d)", __FUNCTION__, c, len);
+    logd("%s: %p (%d)\n", __FUNCTION__, c, len);
     run_timers();
 }
 
@@ -189,6 +191,6 @@ void timer_init(void) {
     clock->ioasync = ioasync_create(clock->clkid, (handle_func)timerfd_receive, 
             (close_func)timerfd_close, clock);
 
-    logd("timer init, fd:%d, %p", clock->clkid, clock->ioasync);
+    logi("timer init, fd:%d, %p\n", clock->clkid, clock->ioasync);
 }
 

@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include "iohandler.h"
 
+#define NSEC2SEC 	(1000000000LL)
+
 struct timer_item;
 
 enum clock_mode {
@@ -40,6 +42,7 @@ struct timer_item {
 
 typedef void (*timer_func)(unsigned long);
 
+void add_timer(struct timer_item *timer, int64_t expires);
 void mod_timer(struct timer_item *timer, int64_t expires);
 void del_timer(struct timer_item *timer);
 void free_timer(struct timer_item *timer);
