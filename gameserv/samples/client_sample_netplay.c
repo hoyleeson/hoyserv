@@ -40,9 +40,10 @@ int cli_callback(int event, void *arg1, void *arg2)
             FILE *fp;
             char *data = (char *)arg1;
             int len = (int)arg2;
+            int seq = (fileseq++) % 200;
 
             sprintf(file, "%s/%s%d%s", SAVE_FILE_PATH,
-                    SAVE_FILE_PREFIX, fileseq++, SAVE_FILE_SUFFIX);
+                    SAVE_FILE_PREFIX, seq, SAVE_FILE_SUFFIX);
 
             fp = fopen(file, "w+");
             ret = fwrite(data, len, 1, fp);
