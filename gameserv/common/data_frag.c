@@ -143,6 +143,7 @@ static void frag_queue_free(frag_queue_t *fq)
     frag_node_t *frag, *p;
     data_frags_t *frags = fq->owner;
 
+    pthread_mutex_lock(&fq->lock);
     list_for_each_entry_safe(frag, p, &fq->list, node) {
         list_remove(&frag->node);
         if(frags->free && frag->pkt)
@@ -150,8 +151,8 @@ static void frag_queue_free(frag_queue_t *fq)
 
         frag_node_free(frag);
     }
+    pthread_mutex_unlock(&fq->lock);
 
-    del_timer(&fq->timer);
     free(fq);
 }
 
@@ -159,7 +160,11 @@ static void frag_queue_free(frag_queue_t *fq)
 static void rm_frag_queue(data_frags_t *frags, frag_queue_t *fq)
 {
     pthread_mutex_lock(&frags->lock);
+
     hashmapRemove(frags->maps, (void *)fq->id);
+    del_timer(&fq->timer);
+    frag_queue_free(fq);
+
     pthread_mutex_unlock(&frags->lock);
 }
 
@@ -171,13 +176,12 @@ static void defrag_timeout_handle(unsigned long data)
 
     frags = fq->owner;
 
+    logw("defrag timout, seq:%d, (%d times)\n", fq->id, frags->stat_timeout);
+    rm_frag_queue(fq->owner, fq);
+
     pthread_mutex_lock(&frags->lock);
     frags->stat_timeout++;
     pthread_mutex_unlock(&frags->lock);
-
-    logw("defrag timout, seq:%d, (%d times)\n", fq->id, frags->stat_timeout);
-    rm_frag_queue(fq->owner, fq);
-    frag_queue_free(fq);
 }
 
 static frag_queue_t *frag_queue_create(data_frags_t *frags, int id)
@@ -334,7 +338,6 @@ int data_defrag(data_frags_t *frags, data_vec_t *v, void *frag_pkt)
     free(data);
 
     rm_frag_queue(frags, fq);
-    frag_queue_free(fq);
     return 0;
 
 fail:
