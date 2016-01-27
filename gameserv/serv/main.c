@@ -78,6 +78,7 @@ static void init_task_protocals(void)
 static void signal_handler(int signal)
 {
     loge("caught signal %d.\n", signal);
+    dump_stack();
     exit(1);
 }
 
@@ -85,12 +86,13 @@ static void signals_init(void)
 {
     signal(SIGCHLD, SIG_IGN);
 
-    signal(SIGBUS, signal_handler);
-    signal(SIGSEGV, signal_handler);
     signal(SIGHUP, signal_handler);
     signal(SIGINT, signal_handler);
+    signal(SIGBUS, signal_handler);
+    signal(SIGSEGV, signal_handler);
     signal(SIGCHLD, signal_handler);
     signal(SIGPIPE, signal_handler);
+    signal(SIGABRT, signal_handler);
 }
 
 static void do_help(void)
@@ -122,7 +124,7 @@ void common_init(void)
 
     iohandler_init();
     init_task_protocals();
-    timer_init();
+    timers_init();
 }
 
 int main(int argc, char **argv)

@@ -203,7 +203,6 @@ static void task_worker_handle(void *opaque, uint8_t *data, int len, void *from)
     if(ret) {
         logw("task worker handle fail.(%d:%d)\n", head->type, ret);
     }
-
 }
 
 
@@ -212,14 +211,18 @@ static void task_worker_close(void *opaque)
 
 }
 
-
+#define DEFAULT_BUF_SIZE        (128*1024*1024)
 static task_worker_t *create_task_worker(node_serv_t *ns)
 {
     int sock;
     struct sockaddr_in addr;
     socklen_t addrlen;
     task_worker_t *tworker;
+    int bufsize = DEFAULT_BUF_SIZE;
+    char host[20] = {0};
 
+    /* XXX FIXME */
+    get_ipaddr(NULL, host);
     sock = socket_inaddr_any_server(0, SOCK_DGRAM);
 
     /* get the actual port number assigned by the system */
@@ -232,6 +235,12 @@ static task_worker_t *create_task_worker(node_serv_t *ns)
     }
     logd("assign task worker address: %s, port: %d.\n", 
             inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+
+    /* XXX */
+    addr.sin_addr.s_addr = inet_addr(host);
+
+    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize));
+    setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize));
 
     tworker = malloc(sizeof(*tworker));
     if(!tworker)

@@ -103,8 +103,6 @@ static void run_netplay(void)
                 printf("killed by signal %d\n", WTERMSIG(status));
             } else if (WIFSTOPPED(status)) {
                 printf("stopped by signal %d\n", WSTOPSIG(status));
-            } else if (WIFCONTINUED(status)) {
-                printf("continued\n");
             }
         } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
@@ -222,6 +220,8 @@ int main(int argc, char **argv)
 
     if(argc < 2) {
         sprintf(host, "%s", DEFAULT_IP);
+    } else {
+        sprintf(host, "%s", argv[1]);
     }
 
     client_init(host, CLI_MODE_CONTROL_ONLY, cli_callback);

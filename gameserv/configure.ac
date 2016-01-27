@@ -62,6 +62,16 @@ AS_IF([test "${enable_verbose}" != "no"], [
        CXXFLAGS="${CXXFLAGS} -DVDEBUG"
        ])
 
+AC_ARG_WITH(platform, 
+              AS_HELP_STRING([--with-platform=PLATFORM], [Specifies the platform(default=x86)]), [],
+              [with_platform=x86]) 
+AS_IF([test "${with_platform}" == "android"], [
+       CFLAGS="${CFLAGS} -DANDROID"
+       CXXFLAGS="${CXXFLAGS} -DANDROID"
+       COMMON_ADD_LIBS([common],[-llog])
+       ])
+
+
 
 LIBPTHREAD=""
 AC_SEARCH_LIBS(pthread_rwlock_init, pthread pthreads c_r, [
@@ -75,7 +85,9 @@ AC_SUBST(LIBPTHREAD)
 #AC_CHECK_LIB(rt, clock_gettime, [LIBRT="-lrt"])
 #AC_SUBST(LIBRT)
 
-AC_CHECK_LIB(rt, clock_gettime, [SERV_ADD_LIBS([servcore],[-lrt])])
+SERV_ADD_LIBS([serv_extra],[-rdynamic])
+
+AC_CHECK_LIB(rt, clock_gettime, [SERV_ADD_LIBS([serv],[-lrt])])
 
 GLOBAL_CFLAGS=
 AC_SUBST(GLOBAL_CFLAGS)

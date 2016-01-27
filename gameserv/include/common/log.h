@@ -39,14 +39,14 @@ static inline void dump_data(const char *desc, void *data, int len)
     int i;
     uint8_t *p = (uint8_t *)data;
 
-    logd("[%s]dump data(%d):\n", desc, len);
+    logv("[%s]dump data(%d):\n", desc, len);
     for(i=0; i<len; i++) {
         if((i % 16) == 0)
-            logd("\n");
-        logd("%02x ", *(p + i));
+            logv("\n");
+        logv("%02x ", *(p + i));
     }
 
-    logd("\n");
+    logv("\n");
 }
 
 #else
@@ -60,7 +60,7 @@ static inline void dump_data(const char *desc, void *data, int len)
 #endif
 
 /* XXX */
-//#if 1
+//#if 0
 #ifdef DEBUG
 #define  logd( fmt... )   LOGD(fmt)
 #else
@@ -73,6 +73,7 @@ static inline void dump_data(const char *desc, void *data, int len)
 
 #define fatal(...) 	do { loge(__VA_ARGS__); exit(-1); } while(0)
 
+void dump_stack(void);
 
 #endif
 

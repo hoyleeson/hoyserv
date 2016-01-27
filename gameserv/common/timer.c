@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/time.h>
-#include <sys/timerfd.h>
+//#include <sys/timerfd.h>
 #include <errno.h>
 
 #include <common/timer.h>
@@ -30,8 +30,10 @@ static void timer_set_interval(struct timer_item *timer, int64_t interval)
     itval.it_value.tv_nsec = i_nsec;
 
     logd("timer set interval:sec:%d, nsec:%d\n", i_sec, i_nsec);
+#if 1
     if (timerfd_settime(clock->clkid, 0, &itval, NULL) == -1)
         loge("timer_set_interval: timerfd_settime failed, %d.%d\n", i_sec, i_nsec);
+#endif
 }
 
 static void timer_set_expires(struct timer_item *timer, int64_t expires) {
@@ -191,17 +193,17 @@ static void timerfd_close(timer_base_t* c)
 }
 
 
-void timer_init(void) {
+void timers_init(void) {
     timer_base_t *clock = &_clock;
 
     clock->timers = NULL;
     clock->enable = 1;
     clock->next_expires = 0;
-
+#if 1
     clock->clkid = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
     clock->ioasync = ioasync_create(clock->clkid, (handle_func)timerfd_receive, 
             (close_func)timerfd_close, clock);
-
+#endif
     logi("timer init, fd:%d, %p\n", clock->clkid, clock->ioasync);
 }
 

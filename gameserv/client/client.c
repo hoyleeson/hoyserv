@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
 #include <sys/socket.h>
 #include <netdb.h>
 #include <errno.h>
@@ -213,6 +214,8 @@ int client_create_group(int open, const char *name, const char *passwd)
     cli->groupid = result.groupid;
     cli->task.taskid = result.taskid;
     cli->task.serv_addr = *((struct sockaddr_in*)&result.addr);
+    logi("receive create group sucess. gtoupid:%d, taskid:%d\n",
+            cli->groupid, cli->task.taskid);
 
     if(cli->mode == CLI_MODE_FULL_FUNCTION) {
         client_task_start();
@@ -365,6 +368,7 @@ void client_checkin(void)
     struct client *cli = &_client;
 
     if(cli->task.taskid == INVAILD_TASKID) {
+        loge("checkin request failed, task id invaild.\n");
         return;	
     }
 
@@ -372,7 +376,6 @@ void client_checkin(void)
 
     p->type = PACK_CHECKIN;
     p->datalen = 0;
-
     task_req_pack_send(cli, p, sizeof(*p));
 }
 
@@ -382,6 +385,7 @@ void client_send_command(void *data, int len)
     struct client *cli = &_client;
 
     if(cli->task.taskid == INVAILD_TASKID) {
+        loge("send command failed, task id invaild.\n");
         return;	
     }
 
@@ -413,7 +417,7 @@ static void cli_frag_output(void *opaque, data_vec_t *v)
             p->seq, p->mf, p->frag_ofs, p->datalen);
 
     task_req_pack_send(cli, p, sizeof(*p) + v->len);
-usleep(1); /* XXX */
+usleep(10); /* XXX */
 }
 
 void client_send_state_img(void *data, int len)
@@ -673,15 +677,20 @@ static void *client_thread_handle(void *args)
 }
 
 
+#define DEFAULT_BUF_SIZE        (32*1024*1024)
 int client_task_start(void)
 {
     int sock;
     struct sockaddr_in addr; 	/* used for debug */
     socklen_t addrlen = sizeof(addr); 	/* used for debug */
     struct client *cli = &_client;
+    int bufsize = DEFAULT_BUF_SIZE;
 
     sock = socket_inaddr_any_server(0, SOCK_DGRAM);
     cli->task.nextseq = 0;
+
+    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize));
+    setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize));
 
     cli->task.hand = ioasync_udp_create(sock, cli_task_handle, cli_task_close, cli);
 
@@ -712,11 +721,30 @@ int common_init(void)
 {
     init_global_thpool();
     iohandler_init();
-    timer_init();
+    timers_init();
 
     return 0;
 }
 
+static void signal_handler(int signal)
+{
+    loge("caught signal %d.\n", signal);
+    dump_stack();
+    exit(1);
+}
+
+static void signals_init(void)
+{
+    signal(SIGCHLD, SIG_IGN);
+
+    signal(SIGHUP, signal_handler);
+    signal(SIGINT, signal_handler);
+    signal(SIGBUS, signal_handler);
+    signal(SIGSEGV, signal_handler);
+    signal(SIGCHLD, signal_handler);
+    signal(SIGPIPE, signal_handler);
+    signal(SIGABRT, signal_handler);
+}
 
 int client_init(const char *host, int mode, event_cb callback) 
 {
@@ -728,6 +756,7 @@ int client_init(const char *host, int mode, event_cb callback)
     socklen_t addrlen = sizeof(addr); 	/* used for debug */
     struct client *cli = &_client;
 
+    signals_init();
     common_init();
 
     response_wait_init(&cli->waits, HASH_WAIT_OBJ_CAPACITY);
@@ -804,6 +833,7 @@ int client_state_save(struct cli_context_state *state)
 int client_state_load(struct cli_context_state *state)
 {
     struct client *cli = &_client;
+
     cli->userid 		= state->userid;
     cli->groupid 		= state->groupid;
     cli->task.taskid 	= state->taskid;

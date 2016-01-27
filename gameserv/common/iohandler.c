@@ -520,9 +520,9 @@ static void looper_init(looper_t*  l)
 
     loge("Create pipe() :%d:%d", l->ctl_socks[0], l->ctl_socks[1]);
     setsockopt(l->ctl_socks[0], SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
-    setsockopt(l->ctl_socks[1], SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
     setsockopt(l->ctl_socks[0], SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
     setsockopt(l->ctl_socks[1], SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+    setsockopt(l->ctl_socks[1], SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
     fcntl(l->ctl_socks[0], F_SETFL, O_NONBLOCK);
     fcntl(l->ctl_socks[1], F_SETFL, O_NONBLOCK);
 

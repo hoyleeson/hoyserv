@@ -24,5 +24,7 @@ int fd_accept(int  fd);
 #define node_to_item(node, container, member) \
     (container *) (((char*) (node)) - offsetof(container, member))
 
+int get_ipaddr(const char* eth, char* ipaddr);
+
 #endif
 

@@ -25,7 +25,8 @@ int pid;
 
 int cli_callback(int event, void *arg1, void *arg2)
 {
-    printf("receive event(%d)\n", event);
+    //printf("receive event(%d)\n", event);
+
     running = 1; /*XXX*/
 
     switch(event) {
@@ -33,8 +34,12 @@ int cli_callback(int event, void *arg1, void *arg2)
             running = 1;
             break;
         case EVENT_COMMAND:
-            printf("event cmd: %s, len:%d\n", (char *)arg1, (int)arg2);
+        {
+            //printf("event cmd: %s, len:%d\n", (char *)arg1, (int)arg2);
+            printf("^ ");
+            fflush(stdout);
             break;
+        }
         case EVENT_STATE_IMG:
         {
             char file[512] = {0};
@@ -43,6 +48,9 @@ int cli_callback(int event, void *arg1, void *arg2)
             char *data = (char *)arg1;
             int len = (int)arg2;
             int seq = (fileseq++) % 200;
+
+            printf("* ");
+            fflush(stdout);
 
             sprintf(file, "%s/%d/%s%d%s", SAVE_FILE_PATH, pid,
                     SAVE_FILE_PREFIX, seq, SAVE_FILE_SUFFIX);
@@ -119,7 +127,7 @@ int main(int argc, char **argv)
         len = fread(imgbuf, 1, DATA_MAX_LEN, fp);
         client_send_state_img(imgbuf, len);
         fclose(fp);
-        sleep(1);
+        usleep(1);
     }
 
     return 0;
