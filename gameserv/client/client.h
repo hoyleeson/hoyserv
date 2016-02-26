@@ -37,6 +37,7 @@ struct cli_context_state {
 typedef int (*event_cb)(int event, void *arg1, void *arg2);
 
 int client_login(void);
+void client_logout(void);
 int client_create_group(int open, const char *name, const char *passwd);
 void client_delete_group(void);
 

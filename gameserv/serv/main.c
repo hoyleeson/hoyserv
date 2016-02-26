@@ -10,6 +10,7 @@
 #include <common/log.h>
 #include <common/thr_pool.h>
 #include <common/utils.h>
+#include <common/timer.h>
 #include <common/iohandler.h>
 
 #include "serv.h"
@@ -77,6 +78,7 @@ static void init_task_protocals(void)
 static void signal_handler(int signal)
 {
     loge("caught signal %d.\n", signal);
+    dump_stack();
     exit(1);
 }
 
@@ -84,12 +86,13 @@ static void signals_init(void)
 {
     signal(SIGCHLD, SIG_IGN);
 
-    signal(SIGBUS, signal_handler);
-    signal(SIGSEGV, signal_handler);
     signal(SIGHUP, signal_handler);
     signal(SIGINT, signal_handler);
+    signal(SIGBUS, signal_handler);
+    signal(SIGSEGV, signal_handler);
     signal(SIGCHLD, signal_handler);
     signal(SIGPIPE, signal_handler);
+    signal(SIGABRT, signal_handler);
 }
 
 static void do_help(void)
@@ -115,6 +118,14 @@ static void do_help(void)
     logi("%s\n", buf);
 }
 
+void common_init(void)
+{
+    init_global_thpool();
+
+    iohandler_init();
+    init_task_protocals();
+    timers_init();
+}
 
 int main(int argc, char **argv)
 {
@@ -145,10 +156,8 @@ int main(int argc, char **argv)
 
     umask(0);
     signals_init();
-    init_global_thpool();
 
-    iohandler_init();
-    init_task_protocals();
+    common_init();
 
     if(mode & SERV_MODE_CENTER_SERV) {
         chost = LOCAL_HOST;

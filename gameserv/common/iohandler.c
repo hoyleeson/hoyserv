@@ -16,6 +16,7 @@
 #include <common/log.h>
 #include <common/utils.h>
 #include <common/thr_pool.h>
+#include <common/fake_atomic.h>
 
 #define USE_THREAD_POOLS 	(1)
 
@@ -185,7 +186,7 @@ static inline void looper_ctl_submit(looper_t* l, void *data, int len)
     pthread_mutex_lock(&l->lock);
     ret = fd_write(l->ctl_socks[0], data, len);
     if(ret < 0)
-        loge("looper ctl command submit fail.\n");
+        loge("looper ctl command submit failed(%d).\n", ret);
     pthread_mutex_unlock(&l->lock);
 }
 
@@ -502,7 +503,7 @@ static int looper_exec(looper_t* l) {
 static void looper_init(looper_t*  l)
 {
     int ret; 
-    int size = MAX_PAYLOAD;
+    int size = MAX_PAYLOAD * 4;
     l->epoll_fd = epoll_create(1);
     l->num_fds  = 0;
     l->max_fds  = 0;
@@ -519,9 +520,9 @@ static void looper_init(looper_t*  l)
 
     loge("Create pipe() :%d:%d", l->ctl_socks[0], l->ctl_socks[1]);
     setsockopt(l->ctl_socks[0], SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
-    setsockopt(l->ctl_socks[1], SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
     setsockopt(l->ctl_socks[0], SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
     setsockopt(l->ctl_socks[1], SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+    setsockopt(l->ctl_socks[1], SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
     fcntl(l->ctl_socks[0], F_SETFL, O_NONBLOCK);
     fcntl(l->ctl_socks[1], F_SETFL, O_NONBLOCK);
 
@@ -600,6 +601,14 @@ static packet_t* packet_alloc(void)
     p->next    = NULL;
     p->len     = 0;
     p->type    = TYPE_NORMAL;
+    fake_atomic_init(&p->refcount, 1);
+
+    return p;
+}
+
+static packet_t* packet_get(packet_t* p)
+{
+    fake_atomic_inc(&p->refcount);
     return p;
 }
 
@@ -613,11 +622,15 @@ static void packet_free(packet_t*  *ppacket)
 
     packet_t* p = *ppacket;
     if (p) {
+        if(!fake_atomic_dec_and_test(&p->refcount))
+            goto out;
+
         p->next       = _free_packets;
         _free_packets = p;
         *ppacket = NULL;
     }
 
+out:
     pthread_mutex_unlock(&packets_lock);
 }
 
@@ -843,7 +856,12 @@ packet_t *ioasync_pkt_alloc(ioasync_t *f)
     return packet_alloc();
 }
 
-void ioasync_pkt_free(ioasync_t *f, packet_t *p)
+packet_t *ioasync_pkt_get(packet_t *p)
+{
+    return packet_get(p);
+}
+
+void ioasync_pkt_free(packet_t *p)
 {
     packet_free(&p);
 }
@@ -960,6 +978,7 @@ fail:
 static int ioasync_write(ioasync_t*  f) 
 {
     packet_t* p;
+    int ret;
 
     pthread_mutex_lock(&f->lock);
     if(!f->out_first) {
@@ -977,7 +996,10 @@ static int ioasync_write(ioasync_t*  f)
 
     pthread_mutex_unlock(&f->lock);
 
-    return ioasync_write_packet(f, p);
+    ret = ioasync_write_packet(f, p);
+    ioasync_pkt_free(p);
+
+    return ret;
 }
 
 /* ioasync_t file descriptor event callback for read/write ops */

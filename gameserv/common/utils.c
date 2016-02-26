@@ -16,6 +16,8 @@
 #include <net/if.h>
 #include <sys/ioctl.h>
 
+#define DEFAULT_NET_DEV     "eth0"
+
 /** UTILITIES
  **/
 
@@ -117,6 +119,11 @@ int get_ipaddr(const char* eth, char* ipaddr)
     struct ifconf ifconf;
     char buf[512];
     struct ifreq *ifreq;
+    char *dev = (char *)eth;
+
+    if(!dev) {
+        dev = DEFAULT_NET_DEV;
+    }
 
     ifconf.ifc_len = 512;
     ifconf.ifc_buf = buf;
@@ -130,7 +137,7 @@ int get_ipaddr(const char* eth, char* ipaddr)
     ifreq = (struct ifreq*)buf;
 
     for(i=(ifconf.ifc_len/sizeof(struct ifreq)); i>0; i--) {
-        if(strcmp(ifreq->ifr_name, eth)==0) {
+        if(strcmp(ifreq->ifr_name, dev)==0) {
             strcpy(ipaddr, inet_ntoa(((struct sockaddr_in*)&(ifreq->ifr_addr))->sin_addr));
             return 0;
         }

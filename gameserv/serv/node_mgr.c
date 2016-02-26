@@ -136,7 +136,7 @@ static int node_weight_compare(node_info_t *n1, node_info_t *n2)
 
 static node_info_t *nodemgr_choice_node(node_mgr_t *mgr, int priority)
 {
-    node_info_t *node, *p;
+    node_info_t *p, *node = NULL;
 
     list_for_each_entry(p, &mgr->nodelist, node) {
         if(node_weight_compare(node, p)) {
@@ -234,7 +234,6 @@ task_handle_t *nodemgr_task_assign(node_mgr_t *mgr, int type, int priority,
 
     /* get node server port by assign request. */
     wait_for_response(&node->waits, MSG_TASK_ASSIGN_RESPONSE, task->taskid, &task->addr);
-    task->addr.sin_addr = node->addr.sin_addr; 	
     logd("task worker address: %s, port: %d.\n", 
             inet_ntoa(task->addr.sin_addr), ntohs(task->addr.sin_port));
 

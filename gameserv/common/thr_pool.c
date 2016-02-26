@@ -249,9 +249,9 @@ static void clone_attributes(pthread_attr_t *new_attr, pthread_attr_t *old_attr)
         /* don't allow a non-NULL thread stack address */
         (void) pthread_attr_setstack(new_attr, NULL, size);
 
+#if 0
         (void) pthread_attr_getscope(old_attr, &value);
         (void) pthread_attr_setscope(new_attr, value);
-#if 0
         (void) pthread_attr_getinheritsched(old_attr, &value);
         (void) pthread_attr_setinheritsched(new_attr, value);
 #endif
